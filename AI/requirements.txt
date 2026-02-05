@@ -11,7 +11,7 @@ ultralytics==8.3.141
 torch>=2.1.0
 torchvision>=0.16.0
 # ONNX模型推理支持（GPU版本）
-onnxruntime-gpu>=1.19.0
+onnxruntime-gpu==1.20.0
 # OpenVINO模型导出支持
 openvino>=2024.0.0
 # 图像处理
