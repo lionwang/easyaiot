@@ -729,6 +729,30 @@ wait_for_service() {
     return 1
 }
 
+# 获取 HTTP 状态码（连接失败返回 000）
+get_http_code() {
+    local url="$1"
+    curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "$url" 2>/dev/null || echo "000"
+}
+
+# 判断端口是否可连接（不依赖特定路径/鉴权）
+is_port_open() {
+    local port="$1"
+    if command -v nc &> /dev/null && nc -z localhost "$port" 2>/dev/null; then
+        return 0
+    fi
+    if command -v timeout &> /dev/null && timeout 1 bash -c "cat < /dev/null > /dev/tcp/localhost/$port" 2>/dev/null; then
+        return 0
+    fi
+    # 最后兜底：能建立 HTTP 连接也算端口可达（哪怕返回 404/401）
+    local code
+    code=$(get_http_code "http://localhost:$port/")
+    if [ "$code" != "000" ]; then
+        return 0
+    fi
+    return 1
+}
+
 # 验证服务健康状态
 verify_service_health() {
     local module=$1
@@ -738,25 +762,39 @@ verify_service_health() {
     
     print_info "验证 $module_name (端口: $port)..."
     
-    if wait_for_service "$module_name" "$port" "$health_endpoint"; then
-        # 检查HTTP响应
-        if [ -n "$health_endpoint" ]; then
-            response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$port$health_endpoint" 2>/dev/null || echo "000")
-            if [ "$response" = "200" ] || [ "$response" = "000" ]; then
-                print_success "$module_name 运行正常"
-                return 0
-            else
-                print_warning "$module_name 响应异常 (HTTP $response)"
-                return 1
-            fi
-        else
-            print_success "$module_name 运行正常"
-            return 0
-        fi
-    else
+    if ! wait_for_service "$module_name" "$port" "$health_endpoint"; then
         print_error "$module_name 未就绪"
         return 1
     fi
+
+    # 有健康检查端点时：优先用 2xx/3xx 判断“健康”，否则只要端口可达就认为“已启动”（给 warning）
+    if [ -n "$health_endpoint" ]; then
+        local url="http://localhost:$port$health_endpoint"
+        local code
+        code=$(get_http_code "$url")
+
+        if [[ "$code" =~ ^[0-9]{3}$ ]] && [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+            print_success "$module_name 运行正常"
+            return 0
+        fi
+
+        if is_port_open "$port"; then
+            print_warning "$module_name 健康检查端点返回 HTTP $code，但端口可达，判定服务已启动（可能需要鉴权/路径不同）"
+            return 0
+        fi
+
+        print_error "$module_name 不可达 (health HTTP $code，端口不可连)"
+        return 1
+    fi
+
+    # 无健康检查端点时：端口可达即正常
+    if is_port_open "$port"; then
+        print_success "$module_name 运行正常"
+        return 0
+    fi
+
+    print_error "$module_name 端口不可达"
+    return 1
 }
 
 # 安装所有服务
