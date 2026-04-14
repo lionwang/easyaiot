@@ -142,6 +142,19 @@ export const runInference = (modelId, formData) => {
   return defHttp.post({
     url: `${Api.InferenceTask}/${modelId}/inference/run`,
     data: formData,
+    // 再次兜底：确保 FormData 不被按 JSON 处理
+    transformRequest: [(data, headers) => {
+      if (typeof FormData !== 'undefined' && data instanceof FormData) {
+        if ((headers as any)?.delete) {
+          (headers as any).delete('Content-Type');
+          (headers as any).delete('content-type');
+        } else if (headers) {
+          delete (headers as Record<string, any>)['Content-Type'];
+          delete (headers as Record<string, any>)['content-type'];
+        }
+      }
+      return data;
+    }],
     // 推理请求（尤其视频）可能需要较长时间，避免默认10秒超时
     timeout: 10 * 60 * 1000,
     headers: {
@@ -157,6 +170,18 @@ export const runClusterInference = (modelId, formData) => {
   return defHttp.post({
     url: `/model/cluster/${modelId}/inference/run`,
     data: formData,
+    transformRequest: [(data, headers) => {
+      if (typeof FormData !== 'undefined' && data instanceof FormData) {
+        if ((headers as any)?.delete) {
+          (headers as any).delete('Content-Type');
+          (headers as any).delete('content-type');
+        } else if (headers) {
+          delete (headers as Record<string, any>)['Content-Type'];
+          delete (headers as Record<string, any>)['content-type'];
+        }
+      }
+      return data;
+    }],
     headers: {
       'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token')
     }

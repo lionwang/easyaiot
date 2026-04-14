@@ -130,10 +130,17 @@ const transform: AxiosTransform = {
     const data = config.data || false
     const isFormDataPayload = typeof FormData !== 'undefined' && data instanceof FormData
 
-    // FormData 交给浏览器自动设置 multipart boundary，避免后端 request.files 为空
+    // FormData 交给浏览器自动设置 multipart boundary，避免被 axios 按 JSON 序列化成 file: {}
     if (isFormDataPayload && config.headers) {
-      delete (config.headers as Recordable)['Content-Type']
-      delete (config.headers as Recordable)['content-type']
+      const headers = config.headers as any
+      if (typeof headers.delete === 'function') {
+        headers.delete('Content-Type')
+        headers.delete('content-type')
+      }
+      else {
+        delete headers['Content-Type']
+        delete headers['content-type']
+      }
     }
 
     formatDate && data && !isString(data) && !isFormDataPayload && formatRequestDate(data)

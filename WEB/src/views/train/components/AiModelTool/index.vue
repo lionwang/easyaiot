@@ -660,6 +660,14 @@ const getStartButtonDisabled = (): boolean => {
   return true;
 };
 
+// 统一提取真实可上传文件，兼容 File、Blob 以及 antd UploadFile(originFileObj)
+const resolveUploadBlob = (fileLike: any): Blob | null => {
+  if (!fileLike) return null;
+  if (fileLike instanceof Blob) return fileLike;
+  if (fileLike.originFileObj instanceof Blob) return fileLike.originFileObj;
+  return null;
+};
+
 const startDetection = async () => {
   // 检查是否有可用的模型（大模型、模型服务或模型选择）
   const hasModel = state.selectedLLMId || state.selectedDeployServiceId || state.selectedModelId;
@@ -706,8 +714,12 @@ const startDetection = async () => {
     // 视频推理场景：先上传文件，run接口只传input_source，避免大文件直传导致超时
     let uploadedVideoInputSource: string | null = null;
     if (state.activeSource === 'video' && state.uploadedVideoFile) {
+      const uploadVideoBlob = resolveUploadBlob(state.uploadedVideoFile);
+      if (!uploadVideoBlob) {
+        throw new Error('视频文件无效，请重新选择后重试');
+      }
       const uploadFormData = new FormData();
-      uploadFormData.append('file', state.uploadedVideoFile);
+      uploadFormData.append('file', uploadVideoBlob);
       const uploadResp = await uploadInputFile(uploadFormData);
       // 兼容三种响应格式：
       // 1) defHttp已解包：{ url, fileName }
@@ -730,7 +742,11 @@ const startDetection = async () => {
 
     // 根据输入源类型添加文件或URL
     if (state.activeSource === 'image' && state.uploadedImageFile) {
-      formData.append('file', state.uploadedImageFile);
+      const uploadImageBlob = resolveUploadBlob(state.uploadedImageFile);
+      if (!uploadImageBlob) {
+        throw new Error('图片文件无效，请重新选择后重试');
+      }
+      formData.append('file', uploadImageBlob);
     } else if (state.activeSource === 'image' && state.historyInputSource) {
       // 从历史记录还原的图片，使用 input_source URL
       formData.append('input_source', state.historyInputSource);

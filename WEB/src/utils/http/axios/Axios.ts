@@ -343,9 +343,22 @@ export class VAxios {
 
   request<T = any>(config: AxiosRequestConfig, options?: RequestOptions): Promise<T> {
     let conf: CreateAxiosOptions = cloneDeep(config)
+    const confAny = conf as any
     // lodash 深拷贝会破坏 FormData，导致文件字段退化为普通对象（后端收到 file: {}）
     if (typeof FormData !== 'undefined' && config.data instanceof FormData)
-      conf.data = config.data
+      confAny.data = config.data
+    // 双保险：FormData 请求必须移除 Content-Type，让浏览器自动带 boundary
+    if (typeof FormData !== 'undefined' && confAny.data instanceof FormData && confAny.headers) {
+      const headers = confAny.headers as any
+      if (typeof headers.delete === 'function') {
+        headers.delete('Content-Type')
+        headers.delete('content-type')
+      }
+      else {
+        delete headers['Content-Type']
+        delete headers['content-type']
+      }
+    }
 
     // cancelToken 如果被深拷贝，会导致最外层无法使用cancel方法来取消请求
     if (config.cancelToken)
