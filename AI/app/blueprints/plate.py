@@ -22,6 +22,7 @@ from app.services.minio_service import ModelService
 from db_models import (
     db,
     PlateAlgorithmVersion,
+    PlateDataset,
     PlateTrainTask,
     PlateInferenceTask,
 )
@@ -34,6 +35,14 @@ _plate_train_runtime = {}
 
 # 推理模型缓存
 _plate_model_cache = {}
+
+# 车牌模型相关 MinIO 存储桶（统一 plate 前缀）
+PLATE_MODEL_BUCKET = 'plate-models'
+PLATE_TRAIN_RESULTS_BUCKET = 'plate-train-results'
+PLATE_TRAIN_LOGS_BUCKET = 'plate-train-logs'
+PLATE_INFERENCE_RESULTS_BUCKET = 'plate-inference-results'
+# 兼容历史命名：旧版训练日志桶
+PLATE_TRAIN_LOGS_LEGACY_BUCKET = 'plate-logs'
 
 
 def _parse_minio_url(url: str):
@@ -63,6 +72,44 @@ def _append_train_log(task: PlateTrainTask, message: str, progress: int = None):
         task.progress = max(0, min(100, int(progress)))
     db.session.commit()
     logger.info(log_line)
+
+
+def _upload_train_log_with_fallback(log_file: str, version_tag: str, task_id: int):
+    """
+    训练日志优先上传到新桶 plate-train-logs。
+    若新桶不可用，回退到历史桶 plate-logs。
+    """
+    train_log_object_key = f"plate/train-logs/{version_tag}/task_{task_id}.log"
+
+    upload_ok, upload_err = ModelService.upload_to_minio(
+        PLATE_TRAIN_LOGS_BUCKET,
+        train_log_object_key,
+        log_file
+    )
+    if upload_ok:
+        return PLATE_TRAIN_LOGS_BUCKET, train_log_object_key
+
+    legacy_ok, legacy_err = ModelService.upload_to_minio(
+        PLATE_TRAIN_LOGS_LEGACY_BUCKET,
+        train_log_object_key,
+        log_file
+    )
+    if legacy_ok:
+        logger.warning(
+            "训练日志上传到新桶失败，已回退历史桶: %s, 错误: %s",
+            PLATE_TRAIN_LOGS_BUCKET,
+            upload_err
+        )
+        return PLATE_TRAIN_LOGS_LEGACY_BUCKET, train_log_object_key
+
+    logger.warning(
+        "训练日志上传失败，新/旧桶均不可用: %s, %s, errors: %s | %s",
+        PLATE_TRAIN_LOGS_BUCKET,
+        PLATE_TRAIN_LOGS_LEGACY_BUCKET,
+        upload_err,
+        legacy_err
+    )
+    return None, None
 
 
 def _resolve_split_path(raw_path: str, split_name: str, yaml_dir: str, dataset_root: str):
@@ -143,60 +190,181 @@ def _normalize_dataset_yaml(dataset_root: str, output_dir: str = None):
     return normalized_yaml_path
 
 
-def _prepare_dataset(task: PlateTrainTask, dataset_source: str, workspace_root: str):
+def _plate_data_root():
+    return os.path.join(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')),
+        'data',
+        'plate'
+    )
+
+
+def _prepare_dataset_source_to_dir(dataset_source: str, target_dir: str):
     """
     支持三种输入：
     1) 本地目录（包含data.yaml）
     2) 本地zip
     3) MinIO下载URL（zip或目录prefix）
     """
-    dataset_dir = os.path.join(workspace_root, 'dataset')
-    os.makedirs(dataset_dir, exist_ok=True)
+    os.makedirs(target_dir, exist_ok=True)
 
     if os.path.exists(dataset_source):
         source_abs = os.path.abspath(dataset_source)
         if os.path.isdir(source_abs):
-            extracted_root = source_abs
-        elif source_abs.lower().endswith('.zip'):
-            if not ModelService.extract_zip(source_abs, dataset_dir):
+            return source_abs
+        if source_abs.lower().endswith('.zip'):
+            if not ModelService.extract_zip(source_abs, target_dir):
                 raise ValueError(f'本地数据集zip解压失败: {source_abs}')
-            extracted_root = dataset_dir
-        else:
-            raise ValueError('本地数据集路径仅支持目录或zip文件')
+            return target_dir
+        raise ValueError('本地数据集路径仅支持目录或zip文件')
+
+    bucket_name, object_key = _parse_minio_url(dataset_source)
+    if not bucket_name or not object_key:
+        raise ValueError('dataset_source 不是有效路径，也不是可解析的MinIO下载URL')
+
+    local_zip_path = os.path.join(target_dir, 'dataset.zip')
+    if object_key.lower().endswith('.zip'):
+        success, error_msg = ModelService.download_from_minio(
+            bucket_name=bucket_name,
+            object_name=object_key,
+            destination_path=local_zip_path
+        )
+        if not success:
+            raise RuntimeError(f'从MinIO下载数据集zip失败: {error_msg or ""}')
     else:
-        bucket_name, object_key = _parse_minio_url(dataset_source)
-        if not bucket_name or not object_key:
-            raise ValueError('dataset_source 不是有效路径，也不是可解析的MinIO下载URL')
+        success, error_msg = ModelService.download_directory_from_minio(
+            bucket_name=bucket_name,
+            object_prefix=object_key,
+            destination_zip_path=local_zip_path
+        )
+        if not success:
+            raise RuntimeError(f'从MinIO下载数据集目录失败: {error_msg or ""}')
 
-        local_zip_path = os.path.join(dataset_dir, 'dataset.zip')
-        if object_key.lower().endswith('.zip'):
-            success, error_msg = ModelService.download_from_minio(
-                bucket_name=bucket_name,
-                object_name=object_key,
-                destination_path=local_zip_path
-            )
-            if not success:
-                raise RuntimeError(f'从MinIO下载数据集zip失败: {error_msg or ""}')
-        else:
-            success, error_msg = ModelService.download_directory_from_minio(
-                bucket_name=bucket_name,
-                object_prefix=object_key,
-                destination_zip_path=local_zip_path
-            )
-            if not success:
-                raise RuntimeError(f'从MinIO下载数据集目录失败: {error_msg or ""}')
+    if not ModelService.extract_zip(local_zip_path, target_dir):
+        raise RuntimeError('下载后的数据集zip解压失败')
+    if os.path.exists(local_zip_path):
+        os.remove(local_zip_path)
+    return target_dir
 
-        if not ModelService.extract_zip(local_zip_path, dataset_dir):
-            raise RuntimeError('下载后的数据集zip解压失败')
-        if os.path.exists(local_zip_path):
-            os.remove(local_zip_path)
-        extracted_root = dataset_dir
 
+def _prepare_dataset(task: PlateTrainTask, dataset_source: str, workspace_root: str):
+    dataset_dir = os.path.join(workspace_root, 'dataset')
+    extracted_root = _prepare_dataset_source_to_dir(dataset_source, dataset_dir)
     normalized_yaml_path = _normalize_dataset_yaml(extracted_root, output_dir=workspace_root)
     task.dataset_local_path = extracted_root
     task.normalized_data_yaml = normalized_yaml_path
     db.session.commit()
     return normalized_yaml_path, extracted_root
+
+
+def _load_normalized_dataset_cfg(dataset_source: str, temp_dir: str):
+    extracted_root = _prepare_dataset_source_to_dir(dataset_source, temp_dir)
+    normalized_yaml = _normalize_dataset_yaml(extracted_root, output_dir=temp_dir)
+    with open(normalized_yaml, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f) or {}
+
+
+def _copy_split_with_labels(src_img_dir: str, dst_img_dir: str, dst_label_dir: str, source_tag: str):
+    if not src_img_dir or not os.path.exists(src_img_dir):
+        return 0
+
+    src_label_dir = os.path.join(os.path.dirname(src_img_dir), 'labels')
+    copied = 0
+    for file_name in os.listdir(src_img_dir):
+        src_img_path = os.path.join(src_img_dir, file_name)
+        if not os.path.isfile(src_img_path):
+            continue
+
+        ext = os.path.splitext(file_name)[1]
+        target_name = f"{source_tag}_{copied:06d}{ext}"
+        shutil.copy2(src_img_path, os.path.join(dst_img_dir, target_name))
+
+        label_stem = os.path.splitext(file_name)[0]
+        src_label_path = os.path.join(src_label_dir, f'{label_stem}.txt')
+        if os.path.exists(src_label_path):
+            shutil.copy2(src_label_path, os.path.join(dst_label_dir, f"{source_tag}_{copied:06d}.txt"))
+
+        copied += 1
+    return copied
+
+
+def _merge_plate_datasets(dataset_entities):
+    if not dataset_entities:
+        raise ValueError('缺少待合并数据集')
+
+    merged_root = os.path.join(_plate_data_root(), 'datasets', f"merged_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    merged_splits = {
+        'train': {
+            'images': os.path.join(merged_root, 'train', 'images'),
+            'labels': os.path.join(merged_root, 'train', 'labels')
+        },
+        'val': {
+            'images': os.path.join(merged_root, 'val', 'images'),
+            'labels': os.path.join(merged_root, 'val', 'labels')
+        },
+        'test': {
+            'images': os.path.join(merged_root, 'test', 'images'),
+            'labels': os.path.join(merged_root, 'test', 'labels')
+        }
+    }
+    for split_dirs in merged_splits.values():
+        os.makedirs(split_dirs['images'], exist_ok=True)
+        os.makedirs(split_dirs['labels'], exist_ok=True)
+
+    expected_nc = None
+    expected_names = None
+    copied_counter = {'train': 0, 'val': 0, 'test': 0}
+
+    for idx, dataset in enumerate(dataset_entities, start=1):
+        temp_extract_dir = tempfile.mkdtemp(prefix=f"plate_ds_merge_{dataset.id}_")
+        try:
+            cfg = _load_normalized_dataset_cfg(dataset.dataset_source, temp_extract_dir)
+            nc = int(cfg.get('nc', 1))
+            names = cfg.get('names', ['License_Plate'])
+            if expected_nc is None:
+                expected_nc = nc
+                expected_names = names
+            elif expected_nc != nc or expected_names != names:
+                raise ValueError(f'数据集标签定义不一致，无法合并: {dataset.name}(ID:{dataset.id})')
+
+            source_tag = f"ds{dataset.id}_{idx}"
+            copied_counter['train'] += _copy_split_with_labels(
+                cfg.get('train'),
+                merged_splits['train']['images'],
+                merged_splits['train']['labels'],
+                source_tag
+            )
+            copied_counter['val'] += _copy_split_with_labels(
+                cfg.get('val'),
+                merged_splits['val']['images'],
+                merged_splits['val']['labels'],
+                source_tag
+            )
+            copied_counter['test'] += _copy_split_with_labels(
+                cfg.get('test'),
+                merged_splits['test']['images'],
+                merged_splits['test']['labels'],
+                source_tag
+            )
+        finally:
+            shutil.rmtree(temp_extract_dir, ignore_errors=True)
+
+    if copied_counter['train'] <= 0 or copied_counter['val'] <= 0:
+        raise ValueError('合并后数据集缺少train/val样本，无法用于训练')
+
+    merged_yaml = {
+        'train': merged_splits['train']['images'],
+        'val': merged_splits['val']['images'],
+        'nc': expected_nc if expected_nc is not None else 1,
+        'names': expected_names if expected_names is not None else ['License_Plate'],
+    }
+    if copied_counter['test'] > 0:
+        merged_yaml['test'] = merged_splits['test']['images']
+
+    os.makedirs(merged_root, exist_ok=True)
+    with open(os.path.join(merged_root, 'data.yaml'), 'w', encoding='utf-8') as f:
+        yaml.safe_dump(merged_yaml, f, allow_unicode=True, sort_keys=False)
+
+    return merged_root, copied_counter
 
 
 def _get_device(use_gpu: bool):
@@ -213,18 +381,18 @@ def _upload_training_artifacts(version: PlateAlgorithmVersion, task: PlateTrainT
     version_tag = version.version.replace('/', '_')
 
     model_obj = f"plate/models/{version_tag}/task_{task.id}/best.pt"
-    success, error_msg = ModelService.upload_to_minio('models', model_obj, weights_path)
+    success, error_msg = ModelService.upload_to_minio(PLATE_MODEL_BUCKET, model_obj, weights_path)
     if not success:
         raise RuntimeError(f'上传best.pt到MinIO失败: {error_msg or ""}')
-    model_url = _build_minio_download_url('models', model_obj)
+    model_url = _build_minio_download_url(PLATE_MODEL_BUCKET, model_obj)
 
     csv_path = os.path.join(train_output_dir, 'results.csv')
     csv_url = None
     if os.path.exists(csv_path):
         csv_obj = f"plate/train-results/{version_tag}/task_{task.id}/results.csv"
-        csv_ok, csv_err = ModelService.upload_to_minio('model-train', csv_obj, csv_path)
+        csv_ok, csv_err = ModelService.upload_to_minio(PLATE_TRAIN_RESULTS_BUCKET, csv_obj, csv_path)
         if csv_ok:
-            csv_url = _build_minio_download_url('model-train', csv_obj)
+            csv_url = _build_minio_download_url(PLATE_TRAIN_RESULTS_BUCKET, csv_obj)
         else:
             logger.warning("上传results.csv失败: %s", csv_err)
 
@@ -232,9 +400,9 @@ def _upload_training_artifacts(version: PlateAlgorithmVersion, task: PlateTrainT
     png_url = None
     if os.path.exists(png_path):
         png_obj = f"plate/train-results/{version_tag}/task_{task.id}/results.png"
-        png_ok, png_err = ModelService.upload_to_minio('model-train', png_obj, png_path)
+        png_ok, png_err = ModelService.upload_to_minio(PLATE_TRAIN_RESULTS_BUCKET, png_obj, png_path)
         if png_ok:
-            png_url = _build_minio_download_url('model-train', png_obj)
+            png_url = _build_minio_download_url(PLATE_TRAIN_RESULTS_BUCKET, png_obj)
         else:
             logger.warning("上传results.png失败: %s", png_err)
 
@@ -330,10 +498,10 @@ def _train_worker(app, task_id: int):
             log_file = os.path.join(workspace_root, 'train.log')
             with open(log_file, 'w', encoding='utf-8') as f:
                 f.write(task.train_log or '')
-            log_obj = f"plate/logs/{version.version}/task_{task.id}.log"
-            log_ok, _ = ModelService.upload_to_minio('log-bucket', log_obj, log_file)
-            if log_ok:
-                _append_train_log(task, f'训练日志已上传: {_build_minio_download_url("log-bucket", log_obj)}', 98)
+            version_tag = version.version.replace('/', '_')
+            log_bucket, log_obj = _upload_train_log_with_fallback(log_file, version_tag, task.id)
+            if log_bucket and log_obj:
+                _append_train_log(task, f'训练日志已上传: {_build_minio_download_url(log_bucket, log_obj)}', 98)
 
             task.status = 'completed'
             task.progress = 100
@@ -382,15 +550,50 @@ def _get_yolo_model_for_version(version: PlateAlgorithmVersion):
     os.makedirs(model_dir, exist_ok=True)
     local_model_path = os.path.join(model_dir, 'best.pt')
 
-    bucket_name, object_key = _parse_minio_url(version.model_path)
-    if bucket_name and object_key:
-        ok, err = ModelService.download_from_minio(bucket_name, object_key, local_model_path)
-        if not ok:
-            raise RuntimeError(f'从MinIO下载模型失败: {err or ""}')
-    elif os.path.exists(version.model_path):
-        local_model_path = version.model_path
-    else:
+    # 优先使用已存在的本地模型，避免每次推理都重复下载。
+    if os.path.exists(local_model_path):
+        model = YOLO(local_model_path)
+        _plate_model_cache[cache_key] = model
+        return model
+
+    model_path = (version.model_path or '').strip()
+    if not model_path:
         raise ValueError('版本模型路径不可用，请检查 model_path')
+
+    if os.path.exists(model_path):
+        local_model_path = os.path.abspath(model_path)
+    else:
+        bucket_name, object_key = _parse_minio_url(model_path)
+
+        # 兼容历史路径格式：
+        # 1) bucket/object_key
+        # 2) 仅 object_key（默认从 plate-models 桶下载）
+        if not (bucket_name and object_key):
+            normalized_path = model_path.lstrip('/')
+            if '/' in normalized_path:
+                prefix, suffix = normalized_path.split('/', 1)
+                if prefix and suffix and prefix in {
+                    PLATE_MODEL_BUCKET,
+                    PLATE_TRAIN_RESULTS_BUCKET,
+                    PLATE_INFERENCE_RESULTS_BUCKET,
+                    PLATE_TRAIN_LOGS_BUCKET,
+                    PLATE_TRAIN_LOGS_LEGACY_BUCKET,
+                    'models',
+                    'model-train',
+                    'inference-results',
+                }:
+                    bucket_name, object_key = prefix, suffix
+                elif suffix:
+                    bucket_name, object_key = PLATE_MODEL_BUCKET, normalized_path
+            elif normalized_path:
+                bucket_name, object_key = PLATE_MODEL_BUCKET, normalized_path
+
+        if bucket_name and object_key:
+            ok, err = ModelService.download_from_minio(bucket_name, object_key, local_model_path)
+            if not ok:
+                raise RuntimeError(f'从MinIO下载模型失败: {err or ""}')
+        else:
+            raise ValueError('版本模型路径不可用，请检查 model_path')
 
     model = YOLO(local_model_path)
     _plate_model_cache[cache_key] = model
@@ -421,6 +624,162 @@ def _prepare_inference_input(temp_dir: str, input_source: str = None):
     if not ok:
         raise RuntimeError(f'下载推理输入失败: {err or ""}')
     return local_path, input_source
+
+
+@plate_bp.route('/dataset/list', methods=['GET'])
+def list_plate_datasets():
+    page_no = int(request.args.get('pageNo', 1))
+    page_size = int(request.args.get('pageSize', 10))
+    keyword = (request.args.get('keyword') or '').strip()
+
+    query = PlateDataset.query
+    if keyword:
+        query = query.filter(PlateDataset.name.like(f'%{keyword}%'))
+    query = query.order_by(PlateDataset.created_at.desc())
+
+    pagination = query.paginate(page=page_no, per_page=page_size, error_out=False)
+    return jsonify({
+        'code': 0,
+        'msg': 'success',
+        'data': [d.to_dict() for d in pagination.items],
+        'total': pagination.total
+    })
+
+
+@plate_bp.route('/dataset/<int:dataset_id>', methods=['GET'])
+def get_plate_dataset(dataset_id):
+    dataset = PlateDataset.query.get_or_404(dataset_id)
+    return jsonify({'code': 0, 'msg': 'success', 'data': dataset.to_dict()})
+
+
+@plate_bp.route('/dataset/create', methods=['POST'])
+def create_plate_dataset():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    dataset_source = (data.get('dataset_source') or '').strip()
+    if not name:
+        return jsonify({'code': 400, 'msg': 'name不能为空'}), 400
+    if not dataset_source:
+        return jsonify({'code': 400, 'msg': 'dataset_source不能为空'}), 400
+    if PlateDataset.query.filter_by(name=name).first():
+        return jsonify({'code': 400, 'msg': f'数据集{name}已存在'}), 400
+
+    entity = PlateDataset(
+        name=name,
+        description=data.get('description'),
+        dataset_source=dataset_source,
+        source_type='custom',
+        status='ready'
+    )
+    db.session.add(entity)
+    db.session.commit()
+    return jsonify({'code': 0, 'msg': '车牌数据集创建成功', 'data': entity.to_dict()})
+
+
+@plate_bp.route('/dataset/<int:dataset_id>/update', methods=['PUT'])
+def update_plate_dataset(dataset_id):
+    dataset = PlateDataset.query.get_or_404(dataset_id)
+    data = request.get_json() or {}
+
+    if 'name' in data:
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'code': 400, 'msg': 'name不能为空'}), 400
+        exists = PlateDataset.query.filter(
+            PlateDataset.name == name,
+            PlateDataset.id != dataset_id
+        ).first()
+        if exists:
+            return jsonify({'code': 400, 'msg': f'数据集{name}已存在'}), 400
+        dataset.name = name
+
+    if 'description' in data:
+        dataset.description = data.get('description')
+
+    if 'dataset_source' in data:
+        dataset_source = (data.get('dataset_source') or '').strip()
+        if not dataset_source:
+            return jsonify({'code': 400, 'msg': 'dataset_source不能为空'}), 400
+        running_tasks = PlateTrainTask.query.filter(
+            PlateTrainTask.dataset_source == dataset.dataset_source,
+            PlateTrainTask.status.in_(['preparing', 'running', 'stopping'])
+        ).count()
+        if running_tasks > 0:
+            return jsonify({'code': 400, 'msg': '该数据集存在运行中的训练任务，暂不允许修改dataset_source'}), 400
+        dataset.dataset_source = dataset_source
+
+    if 'status' in data and data.get('status') in {'ready', 'archived'}:
+        dataset.status = data.get('status')
+
+    db.session.commit()
+    return jsonify({'code': 0, 'msg': '数据集更新成功', 'data': dataset.to_dict()})
+
+
+@plate_bp.route('/dataset/<int:dataset_id>/delete', methods=['POST'])
+def delete_plate_dataset(dataset_id):
+    dataset = PlateDataset.query.get_or_404(dataset_id)
+    running_task = PlateTrainTask.query.filter(
+        PlateTrainTask.dataset_source == dataset.dataset_source,
+        PlateTrainTask.status.in_(['preparing', 'running', 'stopping'])
+    ).first()
+    if running_task:
+        return jsonify({'code': 400, 'msg': '该数据集存在运行中的训练任务，无法删除'}), 400
+
+    if dataset.source_type == 'merged' and os.path.isdir(dataset.dataset_source):
+        try:
+            shutil.rmtree(dataset.dataset_source, ignore_errors=True)
+        except Exception:
+            logger.warning('删除合并数据集目录失败: %s', dataset.dataset_source)
+
+    db.session.delete(dataset)
+    db.session.commit()
+    return jsonify({'code': 0, 'msg': '数据集删除成功'})
+
+
+@plate_bp.route('/dataset/merge', methods=['POST'])
+def merge_plate_datasets():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    dataset_ids = data.get('dataset_ids') or []
+    if not name:
+        return jsonify({'code': 400, 'msg': 'name不能为空'}), 400
+    if not isinstance(dataset_ids, list) or len(dataset_ids) < 2:
+        return jsonify({'code': 400, 'msg': 'dataset_ids至少需要2个数据集ID'}), 400
+    if PlateDataset.query.filter_by(name=name).first():
+        return jsonify({'code': 400, 'msg': f'数据集{name}已存在'}), 400
+
+    try:
+        dataset_ids = [int(i) for i in dataset_ids]
+    except Exception:
+        return jsonify({'code': 400, 'msg': 'dataset_ids必须为整数列表'}), 400
+
+    unique_ids = list(dict.fromkeys(dataset_ids))
+    datasets = PlateDataset.query.filter(PlateDataset.id.in_(unique_ids)).all()
+    if len(datasets) != len(unique_ids):
+        return jsonify({'code': 400, 'msg': '部分dataset_id不存在'}), 400
+
+    id_to_dataset = {d.id: d for d in datasets}
+    ordered_datasets = [id_to_dataset[i] for i in unique_ids]
+
+    try:
+        merged_source, merge_stats = _merge_plate_datasets(ordered_datasets)
+    except Exception as e:
+        return jsonify({'code': 400, 'msg': f'合并数据集失败: {str(e)}'}), 400
+
+    entity = PlateDataset(
+        name=name,
+        description=data.get('description'),
+        dataset_source=merged_source,
+        source_type='merged',
+        status='ready',
+        merged_from=json.dumps(unique_ids, ensure_ascii=False)
+    )
+    db.session.add(entity)
+    db.session.commit()
+
+    result = entity.to_dict()
+    result['merge_stats'] = merge_stats
+    return jsonify({'code': 0, 'msg': '数据集合并成功', 'data': result})
 
 
 @plate_bp.route('/version/list', methods=['GET'])
@@ -514,9 +873,22 @@ def activate_plate_version(version_id):
 @plate_bp.route('/train/start', methods=['POST'])
 def start_plate_train():
     data = request.get_json() or {}
-    dataset_source = (data.get('dataset_source') or '').strip()
-    if not dataset_source:
-        return jsonify({'code': 400, 'msg': 'dataset_source不能为空（本地路径或MinIO下载URL）'}), 400
+    dataset_id = data.get('dataset_id')
+    if dataset_id is None or str(dataset_id).strip() == '':
+        return jsonify({'code': 400, 'msg': 'dataset_id不能为空'}), 400
+    try:
+        dataset_id = int(dataset_id)
+    except Exception:
+        return jsonify({'code': 400, 'msg': 'dataset_id必须是整数'}), 400
+
+    dataset = PlateDataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'code': 400, 'msg': f'数据集ID={dataset_id}不存在'}), 400
+    if dataset.status != 'ready':
+        return jsonify({'code': 400, 'msg': f'数据集{dataset.name}(ID:{dataset.id})不可用'}), 400
+
+    dataset_name = dataset.name
+    dataset_source = dataset.dataset_source
 
     version_str = (data.get('version') or '').strip()
     if not version_str:
@@ -542,6 +914,8 @@ def start_plate_train():
         'batch_size': int(data.get('batch_size', 16)),
         'workers': int(data.get('workers', 8)),
         'use_gpu': bool(data.get('use_gpu', True)),
+        'dataset_id': dataset_id,
+        'dataset_name': dataset_name,
     }
     task = PlateTrainTask(
         version_id=version.id,
@@ -565,7 +939,9 @@ def start_plate_train():
         'data': {
             'train_task_id': task.id,
             'version_id': version.id,
-            'version': version.version
+            'version': version.version,
+            'dataset_id': dataset_id,
+            'dataset_name': dataset_name
         }
     })
 
@@ -677,17 +1053,17 @@ def plate_inference_run():
         image_obj = f"plate/inference/images/{date_str}/task_{inference_task.id}_{uuid.uuid4().hex[:8]}.jpg"
         json_obj = f"plate/inference/json/{date_str}/task_{inference_task.id}_{uuid.uuid4().hex[:8]}.json"
 
-        img_ok, img_err = ModelService.upload_to_minio('inference-results', image_obj, annotated_path)
+        img_ok, img_err = ModelService.upload_to_minio(PLATE_INFERENCE_RESULTS_BUCKET, image_obj, annotated_path)
         if not img_ok:
             raise RuntimeError(f'推理结果图片上传失败: {img_err or ""}')
-        json_ok, json_err = ModelService.upload_to_minio('inference-results', json_obj, detections_json_path)
+        json_ok, json_err = ModelService.upload_to_minio(PLATE_INFERENCE_RESULTS_BUCKET, json_obj, detections_json_path)
         if not json_ok:
             raise RuntimeError(f'推理结果JSON上传失败: {json_err or ""}')
 
         inference_task.status = 'completed'
         inference_task.input_source = source_display
-        inference_task.output_image_path = _build_minio_download_url('inference-results', image_obj)
-        inference_task.output_json_path = _build_minio_download_url('inference-results', json_obj)
+        inference_task.output_image_path = _build_minio_download_url(PLATE_INFERENCE_RESULTS_BUCKET, image_obj)
+        inference_task.output_json_path = _build_minio_download_url(PLATE_INFERENCE_RESULTS_BUCKET, json_obj)
         inference_task.detection_count = len(detections)
         inference_task.result_preview = json.dumps(detections[:20], ensure_ascii=False)
         inference_task.processing_time = time.time() - started_at

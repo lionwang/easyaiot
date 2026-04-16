@@ -34,6 +34,10 @@ ensure_env_var() {
 }
 
 SERVICES=(Nacos PostgresSQL TDengine Redis Kafka MinIO SRS NodeRED EMQX)
+MINIO_BUCKETS=(
+  "dataset" "datasets" "export-bucket" "inference-inputs" "inference-results" "models" "snap-space" "alert-images"
+  "plate-models" "plate-train-results" "plate-train-logs" "plate-inference-results"
+)
 
 service_port() {
   case "$1" in
@@ -253,6 +257,7 @@ cmd_install() {
   compose build --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg DOCKER_PLATFORM="${DOCKER_PLATFORM}"
   info "启动服务..."
   compose up -d
+  ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"
   update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"
   sleep 5
   bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
@@ -260,9 +265,9 @@ cmd_install() {
   cmd_status
 }
 
-cmd_start()  { ensure_ready; info "启动服务..."; compose up -d; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已启动"; }
+cmd_start()  { ensure_ready; info "启动服务..."; compose up -d; ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已启动"; }
 cmd_stop()   { ensure_ready; info "停止服务..."; compose down; ok "已停止"; }
-cmd_restart(){ ensure_ready; info "重启服务..."; compose down; compose up -d; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已重启"; }
+cmd_restart(){ ensure_ready; info "重启服务..."; compose down; compose up -d; ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"; update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"; sleep 5; bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true; ok "已重启"; }
 cmd_status() { ensure_ready; compose ps; echo ""; docker ps --filter "name=ai-service" --format "table {{.Names}}\t{{.Status}}"; }
 
 cmd_logs() {
@@ -291,6 +296,7 @@ cmd_update() {
   info "重新构建并启动..."
   compose build --build-arg BASE_IMAGE="${BASE_IMAGE}" --build-arg DOCKER_PLATFORM="${DOCKER_PLATFORM}"
   compose up -d
+  ensure_minio_buckets || warn "部分 MinIO 存储桶初始化失败，请稍后重试"
   update_nacos_password || warn "自动修改 Nacos 密码失败，请稍后手动确认"
   sleep 5
   bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
@@ -307,6 +313,32 @@ wait_for_health() {
     sleep 2
   done
   return 1
+}
+
+ensure_minio_buckets() {
+  info "初始化 MinIO 存储桶..."
+  if ! wait_for_health 9000 "/minio/health/live"; then
+    warn "MinIO 未就绪，跳过存储桶初始化"
+    return 1
+  fi
+
+  local access_key="${MINIO_ACCESS_KEY:-minioadmin}"
+  local secret_key="${MINIO_SECRET_KEY:-basiclab@iot975248395}"
+  local failed=0
+
+  for bucket in "${MINIO_BUCKETS[@]}"; do
+    if docker run --rm --network "${NETWORK_NAME}" \
+      -e MINIO_ACCESS_KEY="${access_key}" \
+      -e MINIO_SECRET_KEY="${secret_key}" \
+      minio/mc sh -c 'mc alias set local http://MinIO:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null 2>&1 && mc mb --ignore-existing "local/'"${bucket}"'" >/dev/null 2>&1'; then
+      ok "存储桶就绪: ${bucket}"
+    else
+      warn "存储桶初始化失败: ${bucket}"
+      failed=$((failed + 1))
+    fi
+  done
+
+  [[ $failed -eq 0 ]]
 }
 
 update_nacos_password() {

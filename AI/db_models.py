@@ -3,6 +3,7 @@
 @email andywebjava@163.com
 @wechat EasyAIoT2025
 """
+import json
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import pytz
@@ -130,6 +131,41 @@ class PlateAlgorithmVersion(db.Model):
         }
 
 
+class PlateDataset(db.Model):
+    """车牌训练数据集表（独立管理）"""
+    __tablename__ = 'plate_dataset'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    description = db.Column(db.Text, nullable=True)
+    dataset_source = db.Column(db.String(1000), nullable=False)  # 本地目录/zip 或 MinIO下载URL
+    source_type = db.Column(db.String(20), nullable=False, default='custom')  # custom/merged
+    status = db.Column(db.String(20), nullable=False, default='ready')  # ready/archived
+    merged_from = db.Column(db.Text, nullable=True)  # JSON字符串，记录合并来源数据集ID列表
+    created_at = db.Column(db.DateTime, default=beijing_now)
+    updated_at = db.Column(db.DateTime, default=beijing_now, onupdate=beijing_now)
+
+    def to_dict(self):
+        merged_from = []
+        if self.merged_from:
+            try:
+                merged_from = json.loads(self.merged_from)
+            except Exception:
+                merged_from = []
+
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'dataset_source': self.dataset_source,
+            'source_type': self.source_type,
+            'status': self.status,
+            'merged_from': merged_from,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
 class PlateTrainTask(db.Model):
     """车牌算法训练任务表"""
     __tablename__ = 'plate_train_task'
@@ -153,11 +189,24 @@ class PlateTrainTask(db.Model):
     updated_at = db.Column(db.DateTime, default=beijing_now, onupdate=beijing_now)
 
     def to_dict(self):
+        dataset_id = None
+        dataset_name = None
+        if self.hyperparameters:
+            try:
+                hp = json.loads(self.hyperparameters)
+                dataset_id = hp.get('dataset_id')
+                dataset_name = hp.get('dataset_name')
+            except Exception:
+                dataset_id = None
+                dataset_name = None
+
         return {
             'id': self.id,
             'version_id': self.version_id,
             'status': self.status,
             'progress': self.progress,
+            'dataset_id': dataset_id,
+            'dataset_name': dataset_name,
             'dataset_source': self.dataset_source,
             'dataset_local_path': self.dataset_local_path,
             'normalized_data_yaml': self.normalized_data_yaml,

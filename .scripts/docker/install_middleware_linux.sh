@@ -3658,7 +3658,10 @@ def init_minio_buckets_and_upload():
     minio_secure = False
     
     # 存储桶列表
-    buckets = ["dataset", "datasets", "export-bucket", "inference-inputs", "inference-results", "models", "snap-space", "alert-images"]
+    buckets = [
+        "dataset", "datasets", "export-bucket", "inference-inputs", "inference-results", "models", "snap-space", "alert-images",
+        "plate-models", "plate-train-results", "plate-train-logs", "plate-inference-results"
+    ]
     
     # 数据集目录映射: (bucket_name, directory_path, object_prefix)
     # 参数格式: bucket1:dir1:prefix1 bucket2:dir2:prefix2 ...
@@ -3974,6 +3977,11 @@ init_minio() {
         "inference-results:inference-results:"
         "models:models:"
         "snap-space:snap-space:"
+        # 车牌模型专用存储桶（plate-*）
+        "plate-models:plate-models:"
+        "plate-train-results:plate-train-results:"
+        "plate-train-logs:plate-train-logs:"
+        "plate-inference-results:plate-inference-results:"
         # alert-images 存储桶用于存储告警图片（不需要上传初始数据）
     )
     
