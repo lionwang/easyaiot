@@ -6,8 +6,8 @@
 -- 3) 生产环境请按集群规模调整副本数、分桶数、动态分区策略
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS easyaiot_video_dw;
-USE easyaiot_video_dw;
+CREATE DATABASE IF NOT EXISTS easyaiot_person_vehicle_analytics_dw;
+USE easyaiot_person_vehicle_analytics_dw;
 
 -- ----------------------------
 -- 0. 维度表：设备拓扑

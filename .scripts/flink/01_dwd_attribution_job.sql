@@ -120,7 +120,7 @@ CREATE TABLE dwd_face_detail_sink (
 ) WITH (
     'connector' = 'doris',
     'fenodes' = '${DORIS_FENODES}',
-    'table.identifier' = 'easyaiot_video_dw.dwd_face_detail',
+    'table.identifier' = 'easyaiot_person_vehicle_analytics_dw.dwd_face_detail',
     'username' = '${DORIS_USER}',
     'password' = '${DORIS_PASSWORD}',
     'sink.label-prefix' = 'dwd_face_attr',
@@ -156,7 +156,7 @@ CREATE TABLE dwd_plate_detail_sink (
 ) WITH (
     'connector' = 'doris',
     'fenodes' = '${DORIS_FENODES}',
-    'table.identifier' = 'easyaiot_video_dw.dwd_plate_detail',
+    'table.identifier' = 'easyaiot_person_vehicle_analytics_dw.dwd_plate_detail',
     'username' = '${DORIS_USER}',
     'password' = '${DORIS_PASSWORD}',
     'sink.label-prefix' = 'dwd_plate_attr',

@@ -45,7 +45,7 @@ sql-client.sh embedded -f .scripts/flink/02_dws_ads_session_job.sql
 ## 4. 快速验收 SQL
 
 ```sql
-USE easyaiot_video_dw;
+USE easyaiot_person_vehicle_analytics_dw;
 
 SELECT COUNT(*) AS c1 FROM dwd_face_detail;
 SELECT COUNT(*) AS c2 FROM dwd_plate_detail;

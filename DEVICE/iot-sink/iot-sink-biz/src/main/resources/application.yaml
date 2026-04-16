@@ -172,8 +172,7 @@ spring:
     # 算法告警到 Doris ODS 的异步下沉 Topic 规划
     algorithm-ods:
       doris:
-        fe-nodes: localhost:8030
-        database: iot_device_ods
+        jdbc-url: jdbc:mysql://localhost:9030/easyaiot_person_vehicle_analytics_dw?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai
         username: root
         password: ""
       face:

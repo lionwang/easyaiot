@@ -33,7 +33,7 @@
 │ 1) 主告警消费链路（告警存储/通知）         │
 │ 2) ODS 分流链路（独立 Listener）           │
 └──────────────┬──────────────────────────┘
-               │ Stream Load (HTTP)
+               │ JDBC (MySQL 协议)
                ▼
 ┌─────────────────────┐  ┌─────────────────────┐
 │ ODS 人脸表           │  │ ODS 车牌表           │
@@ -240,34 +240,29 @@ DISTRIBUTED BY HASH(device_id) BUCKETS 32
 PROPERTIES ("replication_num" = "3");
 ```
 
-### 4.3 ODS 数据导入（Stream Load）
+### 4.3 ODS 数据导入（JDBC 批量写入）
 
-```http
-PUT /api/{database}/ods_face_event/_stream_load
-Authorization: Basic base64(root:password)
-label: iot_sink_ods_face_event_{timestamp}_{uuid}
-format: json
-strip_outer_array: true
-Expect: 100-continue
-
-[ { ... face_detection/face_feature json ... } ]
+```sql
+-- JDBC URL: jdbc:mysql://{fe-host}:9030/easyaiot_person_vehicle_analytics_dw
+INSERT INTO ods_face_event (
+  event_id, event_type, device_id, ts, ingest_ts, kafka_partition, kafka_offset,
+  track_id, bbox_x, bbox_y, bbox_w, bbox_h, score, face_quality
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 ```
 
-```http
-PUT /api/{database}/ods_plate_event/_stream_load
-Authorization: Basic base64(root:password)
-label: iot_sink_ods_plate_event_{timestamp}_{uuid}
-format: json
-strip_outer_array: true
-Expect: 100-continue
-
-[ { ... vehicle_detection/plate_ocr json ... } ]
+```sql
+-- JDBC URL: jdbc:mysql://{fe-host}:9030/easyaiot_person_vehicle_analytics_dw
+INSERT INTO ods_plate_event (
+  event_id, event_type, device_id, ts, ingest_ts, kafka_partition, kafka_offset,
+  track_id, bbox_x, bbox_y, bbox_w, bbox_h, score,
+  plate_no, plate_score, plate_color, vehicle_type, vehicle_color, vehicle_brand
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 ```
 
 **实现约束（iot-sink）**
 - ODS 下沉由独立 Listener 执行，避免阻塞主告警链路。
 - 仅当算法开关开启（`faceDetectionEnabled` / `plateDetectionEnabled`）时分流下沉。
-- Stream Load 返回 `Status=Success/Publish Timeout` 视为成功，其余状态重试或告警。
+- JDBC 批量写入执行成功（影响行数与批次一致）视为成功，其余情况重试或告警。
 
 ---
 
@@ -550,13 +545,13 @@ HAVING meet_times >= 3;
 |------|------|---------|-------|
 | 1 | 确认人脸、车牌消息 Schema 与检测开关字段 | 算法/后端 | 消息契约对齐 |
 | 2 | 人工录入设备拓扑表 `dim_device_topo` | 现场工程 | 拓扑数据初始化 |
-| 3 | 创建 ODS 表并配置 Stream Load 参数 | 数据开发/后端 | 两张 ODS 表 + 下沉配置 |
+| 3 | 创建 ODS 表并配置 JDBC 下沉参数 | 数据开发/后端 | 两张 ODS 表 + 下沉配置 |
 | 4 | 开发 Flink `job_dwd_attribution`（人脸/车牌各一个作业） | 数据开发 | 可运行 Flink 任务 |
 | 5 | 创建 DWD 表 | 数据开发 | 两张 DWD 表 |
 | 6 | 开发 Flink `job_dws_session`（人脸/车牌各一个作业） | 数据开发 | 会话切割与小时聚合 |
 | 7 | 创建 DWS 表 | 数据开发 | 两张 DWS 表 |
 | 8 | 创建 ADS 表并配置刷新调度 | 数据开发 | 两张 ADS 表及配套 SQL |
-| 9 | 配置监控告警 | 运维/开发 | 分流 Topic Lag、Flink Checkpoint、Stream Load 成功率 |
+| 9 | 配置监控告警 | 运维/开发 | 分流 Topic Lag、Flink Checkpoint、JDBC 写入成功率 |
 
 ---
 
@@ -566,7 +561,7 @@ HAVING meet_times >= 3;
 |------|---------|---------|
 | 分流 Topic 消费延迟 | > 5000 条 | Kafka Manager |
 | Flink Checkpoint 失败率 | > 5% | Flink Web UI |
-| Doris Stream Load 失败率 | 持续增长 | iot-sink 日志 / 自定义指标 |
+| Doris JDBC 写入失败率 | 持续增长 | iot-sink 日志 / 自定义指标 |
 | DWD global_id 生成率（强 ID 占比） | 低于 60% 需关注弱 ID 合并准确性 | 自定义 Metric |
 | DWS 会话数量波动 | 偏离 7 日均值 50% | Doris SQL |
 

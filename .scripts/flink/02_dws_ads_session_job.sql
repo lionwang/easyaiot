@@ -116,7 +116,7 @@ CREATE TABLE dws_face_trace_1h_sink (
 ) WITH (
     'connector' = 'doris',
     'fenodes' = '${DORIS_FENODES}',
-    'table.identifier' = 'easyaiot_video_dw.dws_face_trace_1h',
+    'table.identifier' = 'easyaiot_person_vehicle_analytics_dw.dws_face_trace_1h',
     'username' = '${DORIS_USER}',
     'password' = '${DORIS_PASSWORD}',
     'sink.label-prefix' = 'dws_face_1h',
@@ -143,7 +143,7 @@ CREATE TABLE dws_plate_trace_1h_sink (
 ) WITH (
     'connector' = 'doris',
     'fenodes' = '${DORIS_FENODES}',
-    'table.identifier' = 'easyaiot_video_dw.dws_plate_trace_1h',
+    'table.identifier' = 'easyaiot_person_vehicle_analytics_dw.dws_plate_trace_1h',
     'username' = '${DORIS_USER}',
     'password' = '${DORIS_PASSWORD}',
     'sink.label-prefix' = 'dws_plate_1h',
@@ -168,7 +168,7 @@ CREATE TABLE ads_face_app_sink (
 ) WITH (
     'connector' = 'doris',
     'fenodes' = '${DORIS_FENODES}',
-    'table.identifier' = 'easyaiot_video_dw.ads_face_app',
+    'table.identifier' = 'easyaiot_person_vehicle_analytics_dw.ads_face_app',
     'username' = '${DORIS_USER}',
     'password' = '${DORIS_PASSWORD}',
     'sink.label-prefix' = 'ads_face_rt',
@@ -194,7 +194,7 @@ CREATE TABLE ads_plate_app_sink (
 ) WITH (
     'connector' = 'doris',
     'fenodes' = '${DORIS_FENODES}',
-    'table.identifier' = 'easyaiot_video_dw.ads_plate_app',
+    'table.identifier' = 'easyaiot_person_vehicle_analytics_dw.ads_plate_app',
     'username' = '${DORIS_USER}',
     'password' = '${DORIS_PASSWORD}',
     'sink.label-prefix' = 'ads_plate_rt',
