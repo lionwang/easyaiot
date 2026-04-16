@@ -667,6 +667,15 @@ def send_alert_event_async(alert_data: Dict):
             try:
                 # 标记为实时算法任务
                 alert_data['task_type'] = 'realtime'
+                # 检测开关由算法服务透传给 alert_hook_service，避免 alert_hook_service 再查库
+                if 'face_detection_enabled' not in alert_data:
+                    alert_data['face_detection_enabled'] = bool(
+                        getattr(task_config, 'face_detection_enabled', False)
+                    )
+                if 'plate_detection_enabled' not in alert_data:
+                    alert_data['plate_detection_enabled'] = bool(
+                        getattr(task_config, 'plate_detection_enabled', False)
+                    )
                 response = requests.post(
                     ALERT_HOOK_URL,
                     json=alert_data,
@@ -2221,6 +2230,12 @@ def buffer_streamer_worker(device_id: str):
                                 'event': algorithm_name,  # 使用算法名称作为事件类型
                                 'device_id': device_id,
                                 'device_name': device_name,
+                                'face_detection_enabled': bool(
+                                    getattr(task_config, 'face_detection_enabled', False)
+                                ),
+                                'plate_detection_enabled': bool(
+                                    getattr(task_config, 'plate_detection_enabled', False)
+                                ),
                                 'time': datetime.fromtimestamp(current_timestamp, tz=BEIJING_TZ).strftime('%Y-%m-%d %H:%M:%S'),
                                 'information': json.dumps({
                                     'total_count': len(detections),  # 总目标数量

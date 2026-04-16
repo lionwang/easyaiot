@@ -717,6 +717,15 @@ def send_alert_event_async(alert_data: Dict):
             try:
                 # 标记为抓拍算法任务（确保task_type正确传递）
                 alert_data['task_type'] = 'snapshot'
+                # 检测开关由算法服务透传给 alert_hook_service，避免 alert_hook_service 再查库
+                if 'face_detection_enabled' not in alert_data:
+                    alert_data['face_detection_enabled'] = bool(
+                        getattr(task_config, 'face_detection_enabled', False)
+                    )
+                if 'plate_detection_enabled' not in alert_data:
+                    alert_data['plate_detection_enabled'] = bool(
+                        getattr(task_config, 'plate_detection_enabled', False)
+                    )
                 # 如果information是字典，也添加task_type
                 if 'information' in alert_data and isinstance(alert_data['information'], dict):
                     alert_data['information']['task_type'] = 'snapshot'
@@ -1483,6 +1492,12 @@ def buffer_streamer_worker(device_id: str):
                                                 'event': algorithm_name,  # 使用算法名称作为事件类型
                                                 'device_id': device_id,
                                                 'device_name': device_name,
+                                                'face_detection_enabled': bool(
+                                                    getattr(task_config, 'face_detection_enabled', False)
+                                                ),
+                                                'plate_detection_enabled': bool(
+                                                    getattr(task_config, 'plate_detection_enabled', False)
+                                                ),
                                                 'time': datetime.fromtimestamp(current_timestamp).strftime(
                                                     '%Y-%m-%d %H:%M:%S'),
                                                 'information': json.dumps({

@@ -1,6 +1,6 @@
 # 人/车大数据 Flink + Doris 四层宽表架构（人脸与车牌完全分离·可落地版）
 
-> 版本：v3.0  
+> 版本：v3.1  
 > 适用范围：**人脸**（人脸检测、人脸特征）与 **车牌**（车辆检测、车牌识别）独立处理  
 > 技术栈：Apache Flink 1.17+ · Apache Doris 2.0+ · Apache Kafka 3.x  
 > 设计原则：**人脸归人脸，车牌归车牌，仅通过摄像头 ID 关联，不做跨目标类型关联**
@@ -26,16 +26,18 @@
 │  - 人脸检测 / 人脸特征                     │
 │  - 车牌检测 / 车牌识别                     │
 └──────────────┬──────────────────────────┘
-               │ Kafka (两个 Topic)
+               │ Kafka: iot-alert-notification / iot-snapshot-alert
                ▼
 ┌─────────────────────────────────────────┐
-│ Flink Job : ods_sanity (可选)            │
+│ DEVICE iot-sink                          │
+│ 1) 主告警消费链路（告警存储/通知）         │
+│ 2) ODS 分流链路（独立 Listener）           │
 └──────────────┬──────────────────────────┘
-               │ Routine Load / Doris Connector
+               │ Stream Load (HTTP)
                ▼
 ┌─────────────────────┐  ┌─────────────────────┐
-│  ODS 人脸表          │  │  ODS 车牌表          │
-│  ods_face_event     │  │  ods_plate_event    │
+│ ODS 人脸表           │  │ ODS 车牌表           │
+│ ods_face_event      │  │ ods_plate_event     │
 └──────────┬──────────┘  └──────────┬──────────┘
            │                        │
            ▼                        ▼
@@ -58,31 +60,22 @@
            │                        │
            ▼                        ▼
 ┌─────────────────────┐  ┌─────────────────────┐
-│ DWS 人脸轨迹小时表    │  │ DWS 车牌轨迹小时表    │
-│ dws_face_trace_1h   │  │ dws_plate_trace_1h  │
-└──────────┬──────────┘  └──────────┬──────────┘
-           │                        │
-           ▼                        ▼
-┌─────────────────────┐  ┌─────────────────────┐
 │ ADS 人脸应用表        │  │ ADS 车牌应用表        │
 │ ads_face_app        │  │ ads_plate_app       │
 └─────────────────────┘  └─────────────────────┘
-           │                        │
-           └──────────┬─────────────┘
-                      ▼
-              大屏 / API / 告警
 ```
 
 ---
 
-## 2. 数据契约与 Kafka Topic 定义
+## 2. 数据契约与分流 Topic 定义
 
-### 2.1 Kafka Topic 规划
+### 2.1 Kafka Topic 规划（直写 Doris 版本）
 
-| Topic 名称 | 内容 | 消息格式 |
-|-----------|------|---------|
-| `ods.face.raw` | 人脸检测、人脸特征事件 | JSON（字段铺平） |
-| `ods.plate.raw` | 车辆检测、车牌识别事件 | JSON（字段铺平） |
+| Topic 名称 | 生产者 | 消费者 | 内容 |
+|-----------|--------|--------|------|
+| `iot-alert-notification` / `iot-snapshot-alert` | VIDEO | iot-sink 主告警 Listener | 原始告警消息 |
+| `iot-algorithm-face-ods-dispatch` | iot-sink 分流服务 | iot-sink ODS Listener | 人脸 ODS 分流消息 |
+| `iot-algorithm-plate-ods-dispatch` | iot-sink 分流服务 | iot-sink ODS Listener | 车牌 ODS 分流消息 |
 
 ### 2.2 人脸事件 Schema（供 VIDEO 侧对齐）
 
@@ -247,25 +240,34 @@ DISTRIBUTED BY HASH(device_id) BUCKETS 32
 PROPERTIES ("replication_num" = "3");
 ```
 
-### 4.3 ODS 数据导入（Routine Load）
+### 4.3 ODS 数据导入（Stream Load）
 
-```sql
--- 人脸
-CREATE ROUTINE LOAD ods_face_load ON ods_face_event
-COLUMNS(event_id, event_type, device_id, ts, track_id, bbox_x, bbox_y, bbox_w, bbox_h, score,
-        feature_id, feature_score, feature_version, face_gender, face_age, face_glasses, face_mask, face_quality,
-        ingest_ts=unix_timestamp()*1000, kafka_partition, kafka_offset)
-PROPERTIES ("desired_concurrent_number" = "3", "format" = "json")
-FROM KAFKA ("kafka_broker_list" = "kafka:9092", "kafka_topic" = "ods.face.raw", "property.group.id" = "doris_ods_face");
+```http
+PUT /api/{database}/ods_face_event/_stream_load
+Authorization: Basic base64(root:password)
+label: iot_sink_ods_face_event_{timestamp}_{uuid}
+format: json
+strip_outer_array: true
+Expect: 100-continue
 
--- 车牌
-CREATE ROUTINE LOAD ods_plate_load ON ods_plate_event
-COLUMNS(event_id, event_type, device_id, ts, track_id, bbox_x, bbox_y, bbox_w, bbox_h, score,
-        plate_no, plate_score, plate_color, vehicle_type, vehicle_color, vehicle_brand,
-        ingest_ts=unix_timestamp()*1000, kafka_partition, kafka_offset)
-PROPERTIES ("desired_concurrent_number" = "3", "format" = "json")
-FROM KAFKA ("kafka_broker_list" = "kafka:9092", "kafka_topic" = "ods.plate.raw", "property.group.id" = "doris_ods_plate");
+[ { ... face_detection/face_feature json ... } ]
 ```
+
+```http
+PUT /api/{database}/ods_plate_event/_stream_load
+Authorization: Basic base64(root:password)
+label: iot_sink_ods_plate_event_{timestamp}_{uuid}
+format: json
+strip_outer_array: true
+Expect: 100-continue
+
+[ { ... vehicle_detection/plate_ocr json ... } ]
+```
+
+**实现约束（iot-sink）**
+- ODS 下沉由独立 Listener 执行，避免阻塞主告警链路。
+- 仅当算法开关开启（`faceDetectionEnabled` / `plateDetectionEnabled`）时分流下沉。
+- Stream Load 返回 `Status=Success/Publish Timeout` 视为成功，其余状态重试或告警。
 
 ---
 
@@ -546,15 +548,15 @@ HAVING meet_times >= 3;
 
 | 序号 | 任务 | 负责角色 | 产出物 |
 |------|------|---------|-------|
-| 1 | 确认人脸、车牌消息 Schema 并推送至 Kafka | 算法/后端 | 两个 Topic 正常生产 |
+| 1 | 确认人脸、车牌消息 Schema 与检测开关字段 | 算法/后端 | 消息契约对齐 |
 | 2 | 人工录入设备拓扑表 `dim_device_topo` | 现场工程 | 拓扑数据初始化 |
-| 3 | 创建 ODS 表及 Routine Load | 数据开发 | 两张 ODS 表 + 两个 Routine Load |
+| 3 | 创建 ODS 表并配置 Stream Load 参数 | 数据开发/后端 | 两张 ODS 表 + 下沉配置 |
 | 4 | 开发 Flink `job_dwd_attribution`（人脸/车牌各一个作业） | 数据开发 | 可运行 Flink 任务 |
 | 5 | 创建 DWD 表 | 数据开发 | 两张 DWD 表 |
 | 6 | 开发 Flink `job_dws_session`（人脸/车牌各一个作业） | 数据开发 | 会话切割与小时聚合 |
 | 7 | 创建 DWS 表 | 数据开发 | 两张 DWS 表 |
 | 8 | 创建 ADS 表并配置刷新调度 | 数据开发 | 两张 ADS 表及配套 SQL |
-| 9 | 配置监控告警 | 运维/开发 | Kafka Lag、Flink Checkpoint、Doris 导入延迟 |
+| 9 | 配置监控告警 | 运维/开发 | 分流 Topic Lag、Flink Checkpoint、Stream Load 成功率 |
 
 ---
 
@@ -562,14 +564,14 @@ HAVING meet_times >= 3;
 
 | 指标 | 告警阈值 | 查看方式 |
 |------|---------|---------|
-| Kafka 消费延迟 | > 5000 条 | Kafka Manager |
+| 分流 Topic 消费延迟 | > 5000 条 | Kafka Manager |
 | Flink Checkpoint 失败率 | > 5% | Flink Web UI |
-| Doris Routine Load 错误行数 | 持续增长 | `SHOW ROUTINE LOAD` |
+| Doris Stream Load 失败率 | 持续增长 | iot-sink 日志 / 自定义指标 |
 | DWD global_id 生成率（强 ID 占比） | 低于 60% 需关注弱 ID 合并准确性 | 自定义 Metric |
 | DWS 会话数量波动 | 偏离 7 日均值 50% | Doris SQL |
 
 ---
 
-**文档版本**：v3.0  
-**最后更新**：2026-04-15  
+**文档版本**：v3.1  
+**最后更新**：2026-04-16  
 **适用范围**：人脸与车牌大数据独立四层架构落地实施

@@ -208,7 +208,10 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                     'task_name': task.task_name,
                     'notify_users': task.notify_users,
                     'notify_methods': task.notify_methods,
-                    'alarm_suppress_time': task.alarm_suppress_time
+                    'alarm_suppress_time': task.alarm_suppress_time,
+                    # 旧版 SnapTask 不区分人脸/车牌开关，默认都关闭
+                    'face_detection_enabled': False,
+                    'plate_detection_enabled': False
                 }
                 logger.info(f"📋 SnapTask通知配置详情: device_id={device_id}, task_id={task.id}, "
                           f"notify_users类型={type(task.notify_users).__name__}, "
@@ -291,7 +294,9 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
                 'task_name': task.task_name,
                 'alert_notification_config': notification_config_data,
                 'notify_users': notify_users_from_config,  # 添加通知人信息
-                'alarm_suppress_time': task.alarm_suppress_time
+                'alarm_suppress_time': task.alarm_suppress_time,
+                'face_detection_enabled': bool(task.face_detection_enabled),
+                'plate_detection_enabled': bool(task.plate_detection_enabled)
             }
             
             # 更新最后通知时间
@@ -309,6 +314,40 @@ def _query_alert_notification_config(device_id: str, task_type: str = None) -> O
     except Exception as e:
         logger.error(f"查询告警通知配置失败: device_id={device_id}, error={str(e)}", exc_info=True)
         return None
+
+
+def _resolve_detection_switches_from_alert_data(alert_data: Dict, notification_config: Optional[Dict] = None) -> Dict:
+    """
+    从告警数据中提取人脸/车牌检测开关。
+    优先使用 alert_data 透传值，不再额外查询数据库。
+    """
+    def _to_bool(value, default=False):
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in ('1', 'true', 'yes', 'on')
+        return default
+
+    face_raw = alert_data.get('face_detection_enabled')
+    if face_raw is None:
+        face_raw = alert_data.get('faceDetectionEnabled')
+    if face_raw is None and notification_config:
+        face_raw = notification_config.get('face_detection_enabled')
+
+    plate_raw = alert_data.get('plate_detection_enabled')
+    if plate_raw is None:
+        plate_raw = alert_data.get('plateDetectionEnabled')
+    if plate_raw is None and notification_config:
+        plate_raw = notification_config.get('plate_detection_enabled')
+
+    return {
+        'face_detection_enabled': _to_bool(face_raw, False),
+        'plate_detection_enabled': _to_bool(plate_raw, False),
+    }
 
 
 def _get_notify_users_from_message_templates(channels: list) -> list:
@@ -436,7 +475,7 @@ def process_alert_hook(alert_data: Dict) -> Dict:
         # 统一task_type格式（snapshot -> snap）
         if task_type == 'snapshot':
             task_type = 'snap'
-        
+
         notification_config = None
         if device_id:
             logger.info(f"🔍 查询告警通知配置: device_id={device_id}, task_type={task_type}")
@@ -450,6 +489,8 @@ def process_alert_hook(alert_data: Dict) -> Dict:
                 logger.warning(f"⚠️  未找到告警通知配置: device_id={device_id}, task_type={task_type}。"
                              f"请检查：1) SnapTask或AlgorithmTask是否存在 2) alarm_enabled是否为True "
                              f"3) is_enabled是否为True 4) 设备ID是否匹配")
+
+        detection_switches = _resolve_detection_switches_from_alert_data(alert_data, notification_config)
         
         # 构建告警消息（直接发送原始告警数据，Java端会处理）
         # 如果开启了告警通知，发送到Kafka
@@ -462,7 +503,11 @@ def process_alert_hook(alert_data: Dict) -> Dict:
             if producer is not None:
                 try:
                     # 构建通知消息（使用原始alert_data，不依赖数据库记录）
-                    notification_message = _build_notification_message_for_kafka(alert_data, notification_config)
+                    notification_message = _build_notification_message_for_kafka(
+                        alert_data,
+                        notification_config,
+                        detection_switches
+                    )
                     
                     # 如果通知消息为None，说明通知人列表为空，跳过发送
                     if notification_message is None:
@@ -573,6 +618,8 @@ def process_alert_hook(alert_data: Dict) -> Dict:
                         'notifyUsers': None,  # 明确标记为null
                         'notifyMethods': None,  # 明确标记为null
                         'channels': None,  # 明确标记为null
+                        'faceDetectionEnabled': bool(detection_switches.get('face_detection_enabled', False)),
+                        'plateDetectionEnabled': bool(detection_switches.get('plate_detection_enabled', False)),
                         'shouldNotify': False,  # 明确标记为不需要通知
                         'timestamp': datetime.now().isoformat()
                     }
@@ -652,7 +699,8 @@ def process_alert_hook(alert_data: Dict) -> Dict:
         raise RuntimeError(f"处理告警Hook失败: {str(e)}")
 
 
-def _build_notification_message_for_kafka(alert_data: Dict, notification_config: Dict) -> Optional[Dict]:
+def _build_notification_message_for_kafka(alert_data: Dict, notification_config: Dict,
+                                          detection_switches: Optional[Dict] = None) -> Optional[Dict]:
     """
     构建告警通知消息（用于发送到Kafka，不依赖数据库记录）
     
@@ -770,6 +818,13 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
         alert_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # 构建通知消息（使用驼峰命名以匹配 Java 端的 AlertNotificationMessage）
+    face_enabled = bool(
+        detection_switches.get('face_detection_enabled', False)
+    ) if detection_switches else bool(notification_config.get('face_detection_enabled', False))
+    plate_enabled = bool(
+        detection_switches.get('plate_detection_enabled', False)
+    ) if detection_switches else bool(notification_config.get('plate_detection_enabled', False))
+
     message = {
         'taskId': task_id,  # 驼峰命名
         'taskName': task_name,  # 驼峰命名
@@ -788,6 +843,8 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
         'channels': channels,  # 通知渠道和模板配置
         'notifyMethods': notify_methods,  # 通知方式列表（驼峰命名，兼容旧接口）
         'notifyUsers': notify_users,  # 通知人列表（驼峰命名）
+        'faceDetectionEnabled': face_enabled,
+        'plateDetectionEnabled': plate_enabled,
         'shouldNotify': should_notify,  # 是否需要发送通知
         'timestamp': datetime.now().isoformat()
     }

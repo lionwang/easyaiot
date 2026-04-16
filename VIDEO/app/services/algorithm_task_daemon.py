@@ -15,7 +15,6 @@ import threading
 import time
 import signal
 from datetime import datetime
-from typing import Optional
 
 # 不再需要导入数据库模型，所有信息都通过参数传入
 
@@ -27,7 +26,7 @@ class AlgorithmTaskDaemon:
     所有必要的信息都通过参数传入。
     """
 
-    def __init__(self, task_id: int, log_path: str, task_type: str = 'realtime', llm_enabled: bool = False, task_config_json: Optional[str] = None):
+    def __init__(self, task_id: int, log_path: str, task_type: str = 'realtime', llm_enabled: bool = False):
         """
         初始化守护进程
         
@@ -36,7 +35,6 @@ class AlgorithmTaskDaemon:
             log_path: 日志文件路径（目录）
             task_type: 任务类型 ('realtime' 实时算法任务, 'snap' 抓拍算法任务)
             llm_enabled: 是否启用LLM
-            task_config_json: 任务配置JSON字符串
         """
         self._process = None
         self._task_id = task_id
@@ -421,7 +419,6 @@ class AlgorithmTaskDaemon:
         # 重要：设置 PYTHONUNBUFFERED，确保输出实时（与 AI 模块保持一致）
         env['PYTHONUNBUFFERED'] = '1'
         env['TASK_ID'] = str(self._task_id)
-        
         # 确保关键环境变量被传递
         if 'DATABASE_URL' not in env:
             self._log('DATABASE_URL环境变量未设置，服务可能无法连接数据库', 'WARNING')

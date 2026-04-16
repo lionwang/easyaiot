@@ -3,10 +3,8 @@ package com.basiclab.iot.sink.consumer;
 import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.sink.domain.model.AlertNotificationMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -14,6 +12,12 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -21,7 +25,7 @@ import java.util.*;
 
 /**
  * 算法ODS下沉监听器：
- * 监听人脸/车牌分流队列，转换为ODS贴源事件后再投递到 Doris ODS Kafka Topic。
+ * 监听人脸/车牌分流队列，转换为ODS贴源事件后直接下沉 Doris ODS 表。
  */
 @Slf4j
 @Component
@@ -32,14 +36,23 @@ public class AlgorithmOdsSinkConsumer {
     private static final DateTimeFormatter ALERT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ZoneId SHANGHAI_ZONE = ZoneId.of("Asia/Shanghai");
 
-    @Autowired(required = false)
-    private KafkaTemplate<String, String> iotKafkaTemplate;
+    @Value("${spring.kafka.algorithm-ods.doris.fe-nodes:localhost:8030}")
+    private String dorisFeNodes;
 
-    @Value("${spring.kafka.algorithm-ods.face.ods-topic:ods.face.raw}")
-    private String faceOdsTopic;
+    @Value("${spring.kafka.algorithm-ods.doris.database:iot_device_ods}")
+    private String dorisDatabase;
 
-    @Value("${spring.kafka.algorithm-ods.plate.ods-topic:ods.plate.raw}")
-    private String plateOdsTopic;
+    @Value("${spring.kafka.algorithm-ods.doris.username:root}")
+    private String dorisUsername;
+
+    @Value("${spring.kafka.algorithm-ods.doris.password:}")
+    private String dorisPassword;
+
+    @Value("${spring.kafka.algorithm-ods.face.ods-table:ods_face_event}")
+    private String faceOdsTable;
+
+    @Value("${spring.kafka.algorithm-ods.plate.ods-table:ods_plate_event}")
+    private String plateOdsTable;
 
     @KafkaListener(
             topics = "${spring.kafka.algorithm-ods.face.dispatch-topic:iot-algorithm-face-ods-dispatch}",
@@ -80,11 +93,6 @@ public class AlgorithmOdsSinkConsumer {
                 ack(acknowledgment);
                 return;
             }
-            if (iotKafkaTemplate == null) {
-                log.error("KafkaTemplate不可用，无法下沉ODS: sourceTopic={}, partition={}, offset={}", sourceTopic, partition, offset);
-                ack(acknowledgment);
-                return;
-            }
 
             AlertNotificationMessage message = JsonUtils.parseObject(messageJson, AlertNotificationMessage.class);
             if (message == null || message.getAlert() == null) {
@@ -101,7 +109,7 @@ public class AlgorithmOdsSinkConsumer {
             }
 
             long ts = parseTimestampMillis(message.getAlert().getTime());
-            int sent = 0;
+            List<Map<String, Object>> odsEvents = new ArrayList<>();
             for (Map<String, Object> detection : detections) {
                 String className = asString(detection.get("class_name"));
                 if (DETECTION_FACE.equals(detectionType) && !isFaceClass(className)) {
@@ -114,18 +122,126 @@ public class AlgorithmOdsSinkConsumer {
                 Map<String, Object> odsEvent = DETECTION_FACE.equals(detectionType)
                         ? buildFaceOdsEvent(message, detection, ts)
                         : buildPlateOdsEvent(message, detection, ts);
-                String targetTopic = DETECTION_FACE.equals(detectionType) ? faceOdsTopic : plateOdsTopic;
-                iotKafkaTemplate.send(targetTopic, message.getDeviceId(), JsonUtils.toJsonString(odsEvent));
-                sent++;
+                odsEvents.add(odsEvent);
             }
 
-            log.info("算法ODS下沉完成: detectionType={}, sourceTopic={}, partition={}, offset={}, deviceId={}, sent={}",
-                    detectionType, sourceTopic, partition, offset, message.getDeviceId(), sent);
-            ack(acknowledgment);
+            if (odsEvents.isEmpty()) {
+                log.debug("过滤后无可下沉事件，跳过Doris写入: detectionType={}, sourceTopic={}, deviceId={}",
+                        detectionType, sourceTopic, message.getDeviceId());
+                ack(acknowledgment);
+                return;
+            }
+
+            String tableName = DETECTION_FACE.equals(detectionType) ? faceOdsTable : plateOdsTable;
+            boolean success = streamLoadToDoris(tableName, odsEvents);
+            if (success) {
+                log.info("算法ODS下沉完成: detectionType={}, sourceTopic={}, partition={}, offset={}, deviceId={}, written={}",
+                        detectionType, sourceTopic, partition, offset, message.getDeviceId(), odsEvents.size());
+                ack(acknowledgment);
+            } else {
+                log.error("算法ODS下沉失败: detectionType={}, sourceTopic={}, partition={}, offset={}, deviceId={}, table={}, rows={}",
+                        detectionType, sourceTopic, partition, offset, message.getDeviceId(), tableName, odsEvents.size());
+            }
         } catch (Exception e) {
             log.error("算法ODS下沉失败: detectionType={}, sourceTopic={}, partition={}, offset={}, error={}",
                     detectionType, sourceTopic, partition, offset, e.getMessage(), e);
-            ack(acknowledgment);
+        }
+    }
+
+    private boolean streamLoadToDoris(String tableName, List<Map<String, Object>> events) {
+        HttpURLConnection connection = null;
+        try {
+            String feNode = resolvePrimaryFeNode(dorisFeNodes);
+            if (!StringUtils.hasText(feNode)) {
+                log.error("Doris FE 节点配置为空，无法下沉: feNodes={}", dorisFeNodes);
+                return false;
+            }
+
+            String url = String.format("http://%s/api/%s/%s/_stream_load", feNode, dorisDatabase, tableName);
+            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("PUT");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(10000);
+            connection.setRequestProperty("Authorization", buildBasicAuth(dorisUsername, dorisPassword));
+            connection.setRequestProperty("label", buildStreamLoadLabel(tableName));
+            connection.setRequestProperty("format", "json");
+            connection.setRequestProperty("strip_outer_array", "true");
+            connection.setRequestProperty("Expect", "100-continue");
+
+            byte[] payload = JsonUtils.toJsonString(events).getBytes(StandardCharsets.UTF_8);
+            connection.setFixedLengthStreamingMode(payload.length);
+            try (OutputStream outputStream = connection.getOutputStream()) {
+                outputStream.write(payload);
+                outputStream.flush();
+            }
+
+            int statusCode = connection.getResponseCode();
+            String responseBody = readResponseBody(connection, statusCode);
+            if (statusCode < 200 || statusCode >= 300) {
+                log.error("Doris Stream Load HTTP失败: table={}, statusCode={}, body={}", tableName, statusCode, responseBody);
+                return false;
+            }
+
+            Map<String, Object> result = JsonUtils.parseObject(responseBody, Map.class);
+            String status = result != null ? asString(result.get("Status")) : null;
+            if (!"Success".equalsIgnoreCase(status) && !"Publish Timeout".equalsIgnoreCase(status)) {
+                log.error("Doris Stream Load 返回失败: table={}, status={}, body={}", tableName, status, responseBody);
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("Doris Stream Load 异常: table={}, error={}", tableName, e.getMessage(), e);
+            return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String resolvePrimaryFeNode(String nodes) {
+        if (!StringUtils.hasText(nodes)) {
+            return "";
+        }
+        String[] split = nodes.split(",");
+        return split.length > 0 ? split[0].trim() : nodes.trim();
+    }
+
+    private String buildBasicAuth(String username, String password) {
+        String user = StringUtils.hasText(username) ? username : "root";
+        String pass = password == null ? "" : password;
+        String token = Base64.getEncoder().encodeToString((user + ":" + pass).getBytes(StandardCharsets.UTF_8));
+        return "Basic " + token;
+    }
+
+    private String buildStreamLoadLabel(String tableName) {
+        return "iot_sink_" + tableName + "_" + System.currentTimeMillis() + "_" + UUID.randomUUID();
+    }
+
+    private String readResponseBody(HttpURLConnection connection, int statusCode) {
+        InputStream inputStream = null;
+        try {
+            inputStream = statusCode >= 200 && statusCode < 300 ? connection.getInputStream() : connection.getErrorStream();
+            if (inputStream == null) {
+                return "";
+            }
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[1024];
+            int read;
+            while ((read = inputStream.read(chunk)) != -1) {
+                buffer.write(chunk, 0, read);
+            }
+            return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (Exception ignored) {
+                }
+            }
         }
     }
 

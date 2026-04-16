@@ -171,14 +171,19 @@ spring:
         poll-timeout: 600000
     # 算法告警到 Doris ODS 的异步下沉 Topic 规划
     algorithm-ods:
+      doris:
+        fe-nodes: localhost:8030
+        database: iot_device_ods
+        username: root
+        password: ""
       face:
         dispatch-topic: iot-algorithm-face-ods-dispatch
         group-id: iot-sink-face-ods-sink-consumer
-        ods-topic: ods.face.raw
+        ods-table: ods_face_event
       plate:
         dispatch-topic: iot-algorithm-plate-ods-dispatch
         group-id: iot-sink-plate-ods-sink-consumer
-        ods-topic: ods.plate.raw
+        ods-table: ods_plate_event
 
 --- #################### 定时任务相关配置 ####################
 
