@@ -1,7 +1,9 @@
 package com.basiclab.iot.video.sdk;
 
 import com.basiclab.iot.video.dahua.sdk.DahuaSdkDeviceInfoService;
+import com.basiclab.iot.video.hiksdk.HikOpenApiCameraService;
 import com.basiclab.iot.video.hiksdk.HikSdkDeviceInfoService;
+import com.basiclab.iot.video.sdk.dto.HikPlatformAuthRequest;
 import com.basiclab.iot.video.sdk.dto.SdkAuthRequest;
 import com.basiclab.iot.video.sdk.dto.AjaxResult;
 import org.springframework.validation.annotation.Validated;
@@ -27,6 +29,9 @@ public class SdkDeviceRegisterController {
     @Resource
     private HikSdkDeviceInfoService hikSdkDeviceInfoService;
 
+    @Resource
+    private HikOpenApiCameraService hikOpenApiCameraService;
+
     /**
      * 大华 NetSDK：登录并返回设备序列号、通道等信息。
      */
@@ -47,6 +52,19 @@ public class SdkDeviceRegisterController {
     public AjaxResult hikDeviceInfo(@RequestBody @Validated SdkAuthRequest request) {
         try {
             Map<String, Object> data = hikSdkDeviceInfoService.queryDeviceInfo(request);
+            return AjaxResult.success(data);
+        } catch (IllegalStateException e) {
+            return AjaxResult.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 海康开放平台：通过 appKey/appSecret 分页拉取摄像头列表。
+     */
+    @PostMapping("/hik/platform/cameras")
+    public AjaxResult hikPlatformCameras(@RequestBody @Validated HikPlatformAuthRequest request) {
+        try {
+            Map<String, Object> data = hikOpenApiCameraService.queryAllCameras(request);
             return AjaxResult.success(data);
         } catch (IllegalStateException e) {
             return AjaxResult.error(e.getMessage());
