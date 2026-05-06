@@ -2,16 +2,16 @@
   <div class="onvif-scan-wrap">
     <Tabs v-model:activeKey="subKey" type="card">
       <TabPane key="task" tab="扫描任务">
-        <OnvifScanTaskPanel />
+        <OnvifScanTaskPanel ref="taskPanelRef" />
       </TabPane>
       <TabPane key="pwd" tab="密码库">
-        <OnvifPasswordLibraryPanel />
+        <OnvifPasswordLibraryPanel ref="pwdPanelRef" />
       </TabPane>
       <TabPane key="srv" tab="服务器管理">
-        <OnvifServerManagePanel />
+        <OnvifServerManagePanel ref="srvPanelRef" />
       </TabPane>
       <TabPane key="blk" tab="IP黑名单">
-        <OnvifIpBlacklistPanel />
+        <OnvifIpBlacklistPanel ref="blkPanelRef" />
       </TabPane>
     </Tabs>
   </div>
@@ -28,6 +28,21 @@ import OnvifIpBlacklistPanel from './OnvifIpBlacklistPanel.vue';
 defineOptions({ name: 'OnvifScan' });
 
 const subKey = ref('task');
+
+const taskPanelRef = ref<InstanceType<typeof OnvifScanTaskPanel> | null>(null);
+const pwdPanelRef = ref<InstanceType<typeof OnvifPasswordLibraryPanel> | null>(null);
+const srvPanelRef = ref<InstanceType<typeof OnvifServerManagePanel> | null>(null);
+const blkPanelRef = ref<InstanceType<typeof OnvifIpBlacklistPanel> | null>(null);
+
+/** 切换到此 Tab 时刷新各子面板表格数据 */
+function refresh() {
+  taskPanelRef.value?.refresh?.();
+  pwdPanelRef.value?.refresh?.();
+  srvPanelRef.value?.refresh?.();
+  blkPanelRef.value?.refresh?.();
+}
+
+defineExpose({ refresh });
 </script>
 
 <style scoped>

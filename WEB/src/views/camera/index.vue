@@ -94,7 +94,10 @@
             </TabPane>
           </Tabs>
         </TabPane>
-        <TabPane key="2" tab="设备目录">
+        <TabPane key="2" tab="ONVIF扫描">
+          <OnvifScan ref="onvifScanRef" />
+        </TabPane>
+        <TabPane key="3" tab="设备目录">
           <DirectoryManage
             ref="directoryManageRef"
             @view="handleCardView"
@@ -104,19 +107,19 @@
             @toggleStream="handleCardToggleStream"
           />
         </TabPane>
-        <TabPane key="3" tab="抓拍空间">
+        <TabPane key="4" tab="抓拍空间">
           <SnapSpace ref="snapSpaceRef"/>
         </TabPane>
-        <TabPane key="4" tab="录像空间">
+        <TabPane key="5" tab="录像空间">
           <RecordSpace ref="recordSpaceRef"/>
         </TabPane>
         <TabPane key="6" tab="推流转发">
           <StreamForward ref="streamForwardRef"/>
         </TabPane>
-        <TabPane key="5" tab="算法任务">
+        <TabPane key="7" tab="算法任务">
           <AlgorithmTask ref="algorithmTaskRef"/>
         </TabPane>
-        <TabPane key="7" tab="GB28181分屏监控">
+        <TabPane key="8" tab="GB28181分屏监控">
           <Gb28181SplitScreen ref="gb28181SplitScreenRef"/>
         </TabPane>
         <TabPane key="9" tab="GB28181拉流代理">
@@ -125,16 +128,13 @@
         <TabPane key="10" tab="GB28181节点管理">
           <Gb28181Node ref="gb28181NodeRef"/>
         </TabPane>
-        <TabPane key="11" tab="ONVIF扫描">
-          <OnvifScan />
-        </TabPane>
       </Tabs>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import {onMounted, onUnmounted, reactive, ref} from 'vue';
+import {nextTick, onMounted, onUnmounted, reactive, ref} from 'vue';
 import {useRoute} from 'vue-router';
 import {TabPane, Tabs} from 'ant-design-vue';
 import {BasicTable, TableAction, useTable} from '@/components/Table';
@@ -206,38 +206,65 @@ const gb28181SplitScreenRef = ref();
 const gb28181VideoRef = ref();
 const gb28181PullProxyRef = ref();
 const gb28181NodeRef = ref();
+const onvifScanRef = ref<{ refresh: () => void } | null>(null);
+
+/** 一级 Tab key：1 设备列表 … 10 GB28181节点（与模板 TabPane key 一致） */
+const CAMERA_TAB_KEYS = {
+  DEVICE_LIST: '1',
+  ONVIF: '2',
+  DIRECTORY: '3',
+  SNAP: '4',
+  RECORD: '5',
+  STREAM_FORWARD: '6',
+  ALGORITHM: '7',
+  GB_SPLIT: '8',
+  GB_PULL_PROXY: '9',
+  GB_NODE: '10',
+} as const;
+
+const CAMERA_TAB_ID_SET = new Set<string>(Object.values(CAMERA_TAB_KEYS));
+
+/** 路由 ?tab=：兼容旧版 ONVIF=11，并过滤非法值避免 Tabs 异常 */
+function normalizeCameraRouteTab(tab: string): string {
+  const mapped = tab === '11' ? CAMERA_TAB_KEYS.ONVIF : tab;
+  return CAMERA_TAB_ID_SET.has(mapped) ? mapped : CAMERA_TAB_KEYS.DEVICE_LIST;
+}
 
 // Tab切换
 const handleTabClick = (activeKey: string) => {
   state.activeKey = activeKey;
   // 切换到设备列表标签页时，刷新直连设备数据
-  if (activeKey === '1') {
+  if (activeKey === CAMERA_TAB_KEYS.DEVICE_LIST) {
     handleSuccess();
   }
   // 切换到抓拍空间标签页时，刷新数据
-  if (activeKey === '3' && snapSpaceRef.value) {
+  if (activeKey === CAMERA_TAB_KEYS.SNAP && snapSpaceRef.value) {
     snapSpaceRef.value.refresh();
   }
   // 切换到录像空间标签页时，刷新数据
-  if (activeKey === '4' && recordSpaceRef.value) {
+  if (activeKey === CAMERA_TAB_KEYS.RECORD && recordSpaceRef.value) {
     recordSpaceRef.value.refresh();
   }
   // 切换到算法任务标签页时，刷新数据
-  if (activeKey === '5' && algorithmTaskRef.value) {
+  if (activeKey === CAMERA_TAB_KEYS.ALGORITHM && algorithmTaskRef.value) {
     algorithmTaskRef.value.refresh();
   }
   // 切换到推流转发标签页时，刷新数据
-  if (activeKey === '6' && streamForwardRef.value) {
+  if (activeKey === CAMERA_TAB_KEYS.STREAM_FORWARD && streamForwardRef.value) {
     streamForwardRef.value.refresh();
   }
+  // 切换到 ONVIF 扫描时，刷新各子表
+  if (activeKey === CAMERA_TAB_KEYS.ONVIF && onvifScanRef.value) {
+    onvifScanRef.value.refresh();
+  }
   // 切换到GB28181相关标签页时，可以在这里添加刷新逻辑
-  // if (activeKey === '7' && gb28181SplitScreenRef.value) {
+  // if (activeKey === CAMERA_TAB_KEYS.GB_SPLIT && gb28181SplitScreenRef.value) {
   //   gb28181SplitScreenRef.value.refresh();
   // }
-  // if (activeKey === '9' && gb28181PullProxyRef.value) {
+  // if (activeKey === CAMERA_TAB_KEYS.GB_PULL_PROXY && gb28181PullProxyRef.value) {
   //   gb28181PullProxyRef.value.refresh();
   // }
-  // if (activeKey === '10' && gb28181NodeRef.value) {
+  // if (activeKey === CAMERA_TAB_KEYS.GB_NODE && gb28181NodeRef.value) {
   //   gb28181NodeRef.value.refresh();
   // }
 };
@@ -600,8 +627,13 @@ onMounted(() => {
   // 处理路由参数，自动切换到指定tab
   const tab = route.query.tab as string;
   if (tab) {
-    state.activeKey = tab;
+    state.activeKey = normalizeCameraRouteTab(tab);
   }
+  void nextTick(() => {
+    if (state.activeKey === CAMERA_TAB_KEYS.ONVIF && onvifScanRef.value) {
+      onvifScanRef.value.refresh();
+    }
+  });
 });
 
 // 组件卸载时清除定时器

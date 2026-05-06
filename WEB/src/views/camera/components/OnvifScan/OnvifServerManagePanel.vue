@@ -53,7 +53,7 @@ const columns: BasicColumn[] = [
 
 async function fetchList(params: Record<string, any>) {
   const res: any = await listServerCandidates({
-    pageNo: params.page,
+    pageNo: params.pageNo,
     pageSize: params.pageSize,
   });
   return { list: res.data ?? [], total: res.total ?? 0 };
@@ -99,4 +99,6 @@ async function submitBatchRaw() {
     batchLoading.value = false;
   }
 }
+
+defineExpose({ refresh: reload });
 </script>

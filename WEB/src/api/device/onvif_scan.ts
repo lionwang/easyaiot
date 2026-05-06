@@ -1,4 +1,5 @@
 import { defHttp } from '@/utils/http/axios';
+import { getAccessToken } from '@/utils/auth';
 
 const PREFIX = '/video/onvif-scan';
 
@@ -9,7 +10,8 @@ const commonApi = <T = any>(
   headers = {},
   isTransformResponse = true,
 ) => {
-  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  const token = getAccessToken() || localStorage.getItem('jwt_token') || '';
+  defHttp.setHeader({ 'X-Authorization': `Bearer ${token}` });
   return defHttp[method]<T>(
     {
       url,

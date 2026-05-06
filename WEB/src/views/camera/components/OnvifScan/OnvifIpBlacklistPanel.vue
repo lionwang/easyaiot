@@ -45,7 +45,7 @@ const columns: BasicColumn[] = [
 
 async function fetchList(params: Record<string, any>) {
   const res: any = await listIpBlacklist({
-    pageNo: params.page,
+    pageNo: params.pageNo,
     pageSize: params.pageSize,
   });
   return { list: res.data ?? [], total: res.total ?? 0 };
@@ -68,4 +68,6 @@ async function handleRemove(record: any) {
     console.error(e);
   }
 }
+
+defineExpose({ refresh: reload });
 </script>
