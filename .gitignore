@@ -3,6 +3,12 @@
 
 # Log file
 *.log
+# WEB 日志目录（与 WEB/.gitignore 中 logs/*、!logs/.gitkeep 一致）
+/WEB/logs/*
+!/WEB/logs/.gitkeep
+# WEB docker build 输出日志（与 WEB/.gitignore 中 docker-build-logs/*、!.gitkeep 一致）
+/WEB/docker-build-logs/*
+!/WEB/docker-build-logs/.gitkeep
 .idea
 
 # BlueJ files

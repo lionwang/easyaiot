@@ -1,3 +1,7 @@
+# WEB 日志目录：不参与 diff（若误加入仓库可减少噪音）
+WEB/logs/** -diff
+WEB/docker-build-logs/** -diff
+
 *.png binary
 *.jpg binary
 *.mp4 binary
