@@ -24,6 +24,10 @@ pnpm-debug.log*
 logs/*
 !logs/.gitkeep
 
+# install_linux.sh 将 docker build 完整输出 tee 到此目录（无需 BuildKit）
+docker-build-logs/*
+!docker-build-logs/.gitkeep
+
 # Editor directories and files
 .idea
 # .vscode

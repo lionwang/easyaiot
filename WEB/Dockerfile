@@ -1,4 +1,4 @@
-# 构建阶段
+# 构建阶段（构建期要把完整日志落到宿主机请用 ./install_linux.sh build|update|install，见 docker-build-logs/；经典 docker build 无法在 RUN 里挂载宿主机目录）
 FROM node:22-alpine3.21 AS builder
 
 # 配置npm国内镜像源（淘宝镜像 - npmmirror.com是淘宝镜像的新地址）

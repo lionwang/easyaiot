@@ -85,6 +85,30 @@ check_docker_compose() {
     fi
 }
 
+# 执行 docker build，并把完整构建输出写入宿主机 WEB/docker-build-logs/（不依赖 BuildKit）
+# 失败时 Dockerfile 内 cat 的 pnpm 构建日志会出现在该输出中；pnpm-build.log 为追加写入，带时间分隔便于翻历史
+docker_build_image() {
+    mkdir -p "${SCRIPT_DIR}/docker-build-logs"
+    local ts log_new pnpm_log ec
+    ts=$(date +%Y%m%d-%H%M%S)
+    log_new="${SCRIPT_DIR}/docker-build-logs/docker-build-${ts}.log"
+    pnpm_log="${SCRIPT_DIR}/docker-build-logs/pnpm-build.log"
+    {
+        echo ""
+        echo "======== docker build 开始 ${ts} ========"
+    } >> "$pnpm_log"
+    print_info "本次构建独立日志: docker-build-logs/docker-build-${ts}.log；历史追加: docker-build-logs/pnpm-build.log"
+    set -o pipefail
+    docker build "$@" 2>&1 | tee "$log_new" | tee -a "$pnpm_log"
+    ec=$?
+    set +o pipefail
+    {
+        echo "======== docker build 结束 ${ts} 退出码: ${ec} ========"
+        echo ""
+    } >> "$pnpm_log"
+    return $ec
+}
+
 # 获取占用端口的进程PID
 get_port_pids() {
     local port=$1
@@ -476,7 +500,7 @@ install_service() {
     $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
     
     print_info "构建 Docker 镜像（根据代码重新构建）..."
-    docker build -t web-service:latest .
+    docker_build_image -t web-service:latest .
     
     print_info "启动服务..."
     $COMPOSE_CMD up -d
@@ -588,7 +612,7 @@ build_image() {
     # 注意：前端构建现在在Docker容器内完成，构建镜像时会自动完成
     print_info "前端构建将在Docker容器内自动完成"
     
-    docker build -t web-service:latest --no-cache .
+    docker_build_image -t web-service:latest --no-cache .
     print_success "镜像构建完成"
 }
 
@@ -638,7 +662,7 @@ update_service() {
     
     # 注意：前端构建现在在Docker容器内完成，重新构建镜像时会自动完成
     print_info "重新构建镜像（前端构建将在容器内自动完成）..."
-    docker build -t web-service:latest .
+    docker_build_image -t web-service:latest .
     
     print_info "重启服务..."
     $COMPOSE_CMD up -d
@@ -666,6 +690,8 @@ show_help() {
     echo "  build-frontend  - 在宿主机上构建前端项目（可选，用于测试）"
     echo "  clean           - 清理容器和镜像"
     echo "  update          - 更新并重启服务"
+    echo ""
+    echo "说明: install/build/update 执行 docker build 时完整输出写入 docker-build-logs/，pnpm-build.log 为追加，并带时间戳文件"
     echo "  help            - 显示此帮助信息"
     echo ""
 }
