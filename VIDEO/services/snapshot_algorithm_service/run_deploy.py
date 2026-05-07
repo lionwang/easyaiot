@@ -172,9 +172,9 @@ from tracker import SimpleTracker
 # 加载环境变量
 load_dotenv()
 
-# OpenCV FFmpeg 解码参数（用于降低延迟并尽量忽略/丢弃损坏包）
+# OpenCV FFmpeg 解码参数（与 stream_forward_service / realtime_algorithm_service 对齐）
 # 抓拍任务也会受上游流抖动影响，设置默认捕获选项可减少解码花屏/撕裂。
-# RTSP 传输：与海康「UDP/TCP」一致；默认 udp（需 tcp 时设 OPENCV_FFMPEG_RTSP_TRANSPORT=tcp 或 FFMPEG_RTSP_TRANSPORT=tcp）
+# RTSP 传输：默认 udp；需 tcp 时设 OPENCV_FFMPEG_RTSP_TRANSPORT=tcp 或 FFMPEG_RTSP_TRANSPORT=tcp
 if not os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"):
     _rtsp_tr = (os.getenv("OPENCV_FFMPEG_RTSP_TRANSPORT") or os.getenv("FFMPEG_RTSP_TRANSPORT") or "udp").strip().lower()
     if _rtsp_tr not in ("tcp", "udp"):
@@ -233,20 +233,18 @@ last_alert_time = {}  # {device_id: timestamp}（已废弃，不再使用）
 alert_suppression_interval = 5.0  # 告警抑制间隔：5秒（已废弃，不再使用）
 alert_time_lock = threading.Lock()  # 告警时间戳锁（已废弃，不再使用）
 
-# 配置参数（抓拍算法链路）：优先 AI_*，回退到历史通用变量
-# 帧率：降低可减少CPU占用
-SOURCE_FPS = int(os.getenv('AI_SOURCE_FPS', os.getenv('SOURCE_FPS', '25')))  # 默认25fps
-# 分辨率：抓拍任务用于读取/抽帧/推理的目标分辨率（可独立于观看链路）
-TARGET_WIDTH = int(os.getenv('AI_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280')))
-TARGET_HEIGHT = int(os.getenv('AI_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720')))
+# 配置参数（抓拍算法链路）：优先 AI_*，其次 VIEW_*（与 stream_forward / 实时算法对齐），再回退通用变量
+# 帧率：用于拉流侧节奏等；降低可减少 CPU 占用
+SOURCE_FPS = int(os.getenv('AI_SOURCE_FPS', os.getenv('VIEW_SOURCE_FPS', os.getenv('SOURCE_FPS', '25'))))
+# 分辨率：抓拍用于缩放后再抽帧/推理的目标分辨率（可与观看链路 VIEW_TARGET_* 对齐）
+TARGET_WIDTH = int(os.getenv('AI_TARGET_WIDTH', os.getenv('VIEW_TARGET_WIDTH', os.getenv('TARGET_WIDTH', '1280'))))
+TARGET_HEIGHT = int(os.getenv('AI_TARGET_HEIGHT', os.getenv('VIEW_TARGET_HEIGHT', os.getenv('TARGET_HEIGHT', '720'))))
 TARGET_RESOLUTION = (TARGET_WIDTH, TARGET_HEIGHT)
 EXTRACT_INTERVAL = int(os.getenv('EXTRACT_INTERVAL', '2'))
 BUFFER_SIZE = int(os.getenv('BUFFER_SIZE', '70'))
 MIN_BUFFER_FRAMES = int(os.getenv('MIN_BUFFER_FRAMES', '15'))
 MAX_WAIT_TIME = float(os.getenv('MAX_WAIT_TIME', '0.08'))
-# FFmpeg编码参数（优化以降低CPU占用）
-# FFmpeg编码参数（优化以降低CPU占用）
-# 注意：抓拍算法任务不推流，不需要FFmpeg编码参数
+# 抓拍任务不推 RTMP，无 FFmpeg 编码阶段（与实时推理服务的推流链路不同）
 # YOLO检测参数（优化以降低CPU占用）
 YOLO_IMG_SIZE = int(os.getenv('YOLO_IMG_SIZE', '640'))  # 高清场景下提升小目标检测和叠框细节
 # 队列大小配置（优化以处理高负载）
@@ -255,8 +253,11 @@ PUSH_QUEUE_SIZE = int(os.getenv('PUSH_QUEUE_SIZE', '100'))  # 推帧队列大小
 EXTRACT_QUEUE_SIZE = int(os.getenv('EXTRACT_QUEUE_SIZE', '1'))  # 抽帧队列大小（默认1，每个摄像头只保留1帧）
 # 检测工作线程数量（优化以提升处理能力）
 YOLO_WORKER_THREADS = int(os.getenv('YOLO_WORKER_THREADS', '2'))  # YOLO检测线程数（默认2，原1）
-# 画质分档（抓拍算法链路）：优先 AI_VIDEO_QUALITY_PROFILE
-VIDEO_QUALITY_PROFILE = os.getenv('AI_VIDEO_QUALITY_PROFILE', os.getenv('VIDEO_QUALITY_PROFILE', '')).strip().lower()
+# 画质分档：优先 AI_VIDEO_QUALITY_PROFILE，其次 VIEW_VIDEO_QUALITY_PROFILE
+VIDEO_QUALITY_PROFILE = os.getenv(
+    'AI_VIDEO_QUALITY_PROFILE',
+    os.getenv('VIEW_VIDEO_QUALITY_PROFILE', os.getenv('VIDEO_QUALITY_PROFILE', '')),
+).strip().lower()
 QUALITY_PROFILE_PRESETS = {
     'low': {
         'source_fps': 15,
@@ -1805,10 +1806,10 @@ def buffer_streamer_worker(device_id: str):
             frame_counts[device_id] += 1
             frame_count = frame_counts[device_id]
 
-            # 立即缩放到目标分辨率
+            # 缩放到目标分辨率（与 stream_forward 的 FFmpeg lanczos 思路一致，使用 OpenCV Lanczos）
             original_height, original_width = frame.shape[:2]
             if (original_width, original_height) != TARGET_RESOLUTION:
-                frame = cv2.resize(frame, TARGET_RESOLUTION, interpolation=cv2.INTER_CUBIC)
+                frame = cv2.resize(frame, TARGET_RESOLUTION, interpolation=cv2.INTER_LANCZOS4)
 
             # 将帧发送到抽帧队列进行分析（队列容量为1，新帧会顶掉旧帧）
             pending_frames.add(frame_count)
@@ -2259,7 +2260,7 @@ def signal_handler(sig, frame):
 def main():
     """主函数"""
     logger.info("=" * 60)
-    logger.info("🚀 统一的实时算法任务服务启动（优化模式：低CPU占用）")
+    logger.info("🚀 抓拍算法任务服务启动")
     logger.info("=" * 60)
     logger.info("📊 优化配置参数:")
     logger.info(f"   视频分辨率: {TARGET_WIDTH}x{TARGET_HEIGHT} (原1280x720)")
