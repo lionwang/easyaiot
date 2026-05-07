@@ -9,6 +9,15 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+
+def utc_isoformat_z(dt):
+    """naive UTC（与 utcnow 一致）序列化为带 Z 的 ISO-8601，便于前端按 UTC 解析后再格式化为本地时间。"""
+    if dt is None:
+        return None
+    u = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return u.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
 class DeviceDirectory(db.Model):
     """设备目录表，用于管理摄像头的目录结构"""
     __tablename__ = 'device_directory'
@@ -379,7 +388,7 @@ class FrameExtractor(db.Model):
             'server_ip': self.server_ip,
             'port': self.port,
             'process_id': self.process_id,
-            'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            'last_heartbeat': utc_isoformat_z(self.last_heartbeat),
             'log_path': self.log_path,
             'task_id': self.task_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -425,7 +434,7 @@ class Sorter(db.Model):
             'server_ip': self.server_ip,
             'port': self.port,
             'process_id': self.process_id,
-            'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            'last_heartbeat': utc_isoformat_z(self.last_heartbeat),
             'log_path': self.log_path,
             'task_id': self.task_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -518,7 +527,7 @@ class Pusher(db.Model):
             'server_ip': self.server_ip,
             'port': self.port,
             'process_id': self.process_id,
-            'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            'last_heartbeat': utc_isoformat_z(self.last_heartbeat),
             'log_path': self.log_path,
             'task_id': self.task_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -690,7 +699,7 @@ class AlgorithmTask(db.Model):
             'alert_notification_enabled': self.alert_notification_enabled,
             'alert_notification_config': json.loads(self.alert_notification_config) if self.alert_notification_config else None,
             'alarm_suppress_time': self.alarm_suppress_time,
-            'last_notify_time': self.last_notify_time.isoformat() if self.last_notify_time else None,
+            'last_notify_time': utc_isoformat_z(self.last_notify_time),
             'space_id': self.space_id,
             'space_name': self.snap_space.space_name if self.snap_space else None,
             'cron_expression': self.cron_expression,
@@ -701,19 +710,19 @@ class AlgorithmTask(db.Model):
             'total_frames': self.total_frames,
             'total_detections': self.total_detections,
             'total_captures': self.total_captures,
-            'last_process_time': self.last_process_time.isoformat() if self.last_process_time else None,
-            'last_success_time': self.last_success_time.isoformat() if self.last_success_time else None,
-            'last_capture_time': self.last_capture_time.isoformat() if self.last_capture_time else None,
+            'last_process_time': utc_isoformat_z(self.last_process_time),
+            'last_success_time': utc_isoformat_z(self.last_success_time),
+            'last_capture_time': utc_isoformat_z(self.last_capture_time),
             'defense_mode': self.defense_mode,
             'defense_schedule': self.defense_schedule,
             'service_server_ip': self.service_server_ip,
             'service_port': self.service_port,
             'service_process_id': self.service_process_id,
-            'service_last_heartbeat': self.service_last_heartbeat.isoformat() if self.service_last_heartbeat else None,
+            'service_last_heartbeat': utc_isoformat_z(self.service_last_heartbeat),
             'service_log_path': self.service_log_path,
             'algorithm_services': algorithm_services_list,  # 添加算法模型服务列表
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'created_at': utc_isoformat_z(self.created_at),
+            'updated_at': utc_isoformat_z(self.updated_at)
         }
 
 
@@ -1115,14 +1124,14 @@ class StreamForwardTask(db.Model):
             'service_server_ip': self.service_server_ip,
             'service_port': self.service_port,
             'service_process_id': self.service_process_id,
-            'service_last_heartbeat': self.service_last_heartbeat.isoformat() if self.service_last_heartbeat else None,
+            'service_last_heartbeat': utc_isoformat_z(self.service_last_heartbeat),
             'service_log_path': self.service_log_path,
             'total_streams': self.total_streams,
-            'last_process_time': self.last_process_time.isoformat() if self.last_process_time else None,
-            'last_success_time': self.last_success_time.isoformat() if self.last_success_time else None,
+            'last_process_time': utc_isoformat_z(self.last_process_time),
+            'last_success_time': utc_isoformat_z(self.last_success_time),
             'description': self.description,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'created_at': utc_isoformat_z(self.created_at),
+            'updated_at': utc_isoformat_z(self.updated_at)
         }
 
 

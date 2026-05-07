@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
-from models import db, StreamForwardTask, Device
+from models import db, StreamForwardTask, Device, utc_isoformat_z
 from app.services.stream_forward_service import (
     create_stream_forward_task, update_stream_forward_task, delete_stream_forward_task,
     get_stream_forward_task, list_stream_forward_tasks, start_stream_forward_task,
@@ -319,7 +319,7 @@ def get_task_status(task_id):
             'server_ip': task.service_server_ip,
             'port': task.service_port,
             'process_id': task.service_process_id,
-            'last_heartbeat': task.service_last_heartbeat.isoformat() if task.service_last_heartbeat else None,
+            'last_heartbeat': utc_isoformat_z(task.service_last_heartbeat),
             'log_path': task.service_log_path,
             'status': service_status,
             'total_streams': task.total_streams

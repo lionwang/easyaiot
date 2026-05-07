@@ -316,7 +316,8 @@ services:
       # - SW_AGENT_COLLECTOR_BACKEND_SERVICES=[YOUR_SKYWALKING_ADDR]
     volumes:
       - ${HOME}/docker/iot-device/logs:/root/logs/
-      # 告警图片目录（与VIDEO服务共享，用于读取Python服务保存的告警图片并上传到MinIO）
+      # 告警图片目录（与VIDEO/算法进程共享，用于读取告警 JPG 并上传 MinIO）
+      # 算法侧须挂载同一宿主机目录且设置 ALERT_IMAGES_DIR=/app/alert_images（见 VIDEO/app/utils/alert_images_paths.py）
       # 注意：使用相对路径，从DEVICE目录指向VIDEO目录下的alert_images
       - ../VIDEO/alert_images:/app/alert_images
       # - /data/skywalking/skywalking-agent:/data/skywalking/skywalking-agent

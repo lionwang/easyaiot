@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 
-from models import db, AlgorithmTask, FrameExtractor, Sorter, Pusher, Device
+from models import db, AlgorithmTask, FrameExtractor, Sorter, Pusher, Device, utc_isoformat_z
 from app.services.algorithm_task_service import (
     create_algorithm_task, update_algorithm_task, delete_algorithm_task,
     get_algorithm_task, list_algorithm_tasks, start_algorithm_task,
@@ -352,7 +352,7 @@ def get_task_services_status(task_id):
                 'server_ip': task.service_server_ip,
                 'port': task.service_port,
                 'process_id': task.service_process_id,
-                'last_heartbeat': task.service_last_heartbeat.isoformat() if task.service_last_heartbeat else None,
+                'last_heartbeat': utc_isoformat_z(task.service_last_heartbeat),
                 'log_path': task.service_log_path,
                 'status': service_status,
                 'run_status': task.run_status
@@ -366,7 +366,7 @@ def get_task_services_status(task_id):
                 'server_ip': task.service_server_ip,
                 'port': task.service_port,
                 'process_id': task.service_process_id,
-                'last_heartbeat': task.service_last_heartbeat.isoformat() if task.service_last_heartbeat else None,
+                'last_heartbeat': utc_isoformat_z(task.service_last_heartbeat),
                 'log_path': task.service_log_path,
                 'status': service_status,
                 'run_status': task.run_status

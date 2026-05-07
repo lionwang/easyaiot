@@ -18,6 +18,7 @@ sys.path.insert(0, video_root)
 
 from flask import Flask
 from models import db, AlgorithmTask, Device, SnapSpace
+from app.utils.alert_images_paths import resolve_alert_images_root
 from sqlalchemy import text
 
 # 初始化Flask应用
@@ -109,7 +110,7 @@ def check_alert_images_dir(task_id):
     print("3. 检查告警图片保存目录")
     print("=" * 80)
     
-    alert_image_dir = os.path.join(video_root, 'alert_images', f'task_{task_id}')
+    alert_image_dir = os.path.join(resolve_alert_images_root(video_root), f'task_{task_id}')
     
     if not os.path.exists(alert_image_dir):
         print(f"⚠️  告警图片目录不存在: {alert_image_dir}")

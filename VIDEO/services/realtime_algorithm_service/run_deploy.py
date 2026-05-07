@@ -39,6 +39,7 @@ sys.path.insert(0, video_root)
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
 from app.utils.gb28181_source import resolve_gb28181_source
+from app.utils.alert_images_paths import resolve_alert_images_root
 
 
 def _parse_gpu_id_list(value: str) -> List[int]:
@@ -1185,9 +1186,10 @@ def save_alert_image(frame: np.ndarray, device_id: str, frame_number: int, detec
         图片保存路径，如果保存失败返回None
     """
     try:
-        # 创建告警图片保存目录
+        # 创建告警图片保存目录（ALERT_IMAGES_DIR=/app/alert_images 与 iot-sink 挂载对齐）
         video_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        alert_image_dir = os.path.join(video_root, 'alert_images', f'task_{TASK_ID}', device_id)
+        images_root = resolve_alert_images_root(video_root)
+        alert_image_dir = os.path.join(images_root, f'task_{TASK_ID}', device_id)
         os.makedirs(alert_image_dir, exist_ok=True)
 
         # 生成图片文件名（包含时间戳和帧号）
