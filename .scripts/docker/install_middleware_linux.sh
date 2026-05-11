@@ -2101,16 +2101,16 @@ create_all_storage_directories() {
         fi
     done
 
-    # SRS 容器绑定 ${HOME}/srs_data -> /data（与 docker-compose.yml 一致；避免 macOS 挂载 /data 失败）
-    if [ -n "${HOME:-}" ]; then
-        mkdir -p "${HOME}/srs_data" 2>/dev/null || true
-        if [ "$EUID" -eq 0 ]; then
-            chmod -R 777 "${HOME}/srs_data" 2>/dev/null || true
-        elif command -v sudo &> /dev/null; then
-            sudo chmod -R 777 "${HOME}/srs_data" 2>/dev/null || true
-        else
-            chmod -R 777 "${HOME}/srs_data" 2>/dev/null || true
-        fi
+    # SRS 容器绑定宿主机 /data -> 容器 /data（与 docker-compose.yml 一致）
+    if [ "$EUID" -eq 0 ]; then
+        mkdir -p /data/playbacks 2>/dev/null || true
+        chmod -R 777 /data 2>/dev/null || true
+    elif command -v sudo &> /dev/null; then
+        sudo mkdir -p /data/playbacks 2>/dev/null || true
+        sudo chmod -R 777 /data 2>/dev/null || true
+    else
+        mkdir -p /data/playbacks 2>/dev/null || true
+        chmod -R 777 /data 2>/dev/null || true
     fi
     
     if [ $created_count -eq $total_count ]; then
@@ -2480,8 +2480,7 @@ wait_for_zlmediakit() {
     return 1
 }
 
-# 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data）
-# 若直接 bind-mount 宿主机 /data -> 容器 /data，需该目录预先存在；无 root/sudo 时跳过并提示（compose 默认使用 ${HOME}/srs_data -> /data 不受影响）
+# 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data；compose 挂载 /data:/data）
 ensure_host_data_directory_before_srs() {
     print_info "安装 SRS 前检查宿主机目录 /data ..."
     local created=0
@@ -2504,7 +2503,7 @@ ensure_host_data_directory_before_srs() {
     if [ "$created" -eq 1 ]; then
         print_success "宿主机目录已就绪: /data（含 playbacks 子目录）"
     else
-        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks）。使用 compose 默认 \${HOME}/srs_data:/data 时可忽略。"
+        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks && sudo chmod -R 777 /data）。"
     fi
 }
 
@@ -3689,7 +3688,7 @@ def init_minio_buckets_and_upload():
     
     # 存储桶列表
     buckets = [
-        "dataset", "datasets", "export-bucket", "inference-inputs", "inference-results", "models", "snap-space", "alert-images",
+        "dataset", "datasets", "export-bucket", "inference-inputs", "inference-results", "models", "snap-space", "record-space", "alert-images",
         "plate-models", "plate-train-results", "plate-train-logs", "plate-inference-results"
     ]
     
@@ -3760,6 +3759,43 @@ def init_minio_buckets_and_upload():
             except S3Error as e:
                 print(f"BUCKET_ERROR:{bucket_name}:{str(e)}")
                 sys.exit(1)
+        
+        # record-space 必须公开可读（若桶已存在而无策略，上面分支不会写入策略，此处统一补齐）
+        try:
+            import json
+            if client.bucket_exists("record-space"):
+                rs_policy = {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": [
+                                "s3:GetBucketLocation",
+                                "s3:ListBucket",
+                                "s3:ListBucketMultipartUploads"
+                            ],
+                            "Resource": ["arn:aws:s3:::record-space"]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": [
+                                "s3:ListMultipartUploadParts",
+                                "s3:PutObject",
+                                "s3:GetObject",
+                                "s3:DeleteObject",
+                                "s3:AbortMultipartUpload"
+                            ],
+                            "Resource": ["arn:aws:s3:::record-space/*"]
+                        }
+                    ]
+                }
+                client.set_bucket_policy("record-space", json.dumps(rs_policy))
+                print("BUCKET_POLICY_PUBLIC:record-space")
+        except S3Error as e:
+            print(f"BUCKET_ERROR:record-space:{str(e)}")
+            sys.exit(1)
         
         print(f"BUCKETS_SUCCESS:{created_buckets}/{len(buckets)}")
         

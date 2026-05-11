@@ -1218,6 +1218,38 @@ def on_publish_callback():
         return jsonify({'code': 0, 'msg': None})
 
 
+def _parse_srs_dvr_path_date(absolute_file_path: str):
+    """从 SRS DVR 路径解析 date_dir 与 record_time。
+
+    约定：``.../playbacks/<app>/<stream>/YYYY/MM/DD/<file>`` — ``app`` 可为 ``live``、``ai`` 等。
+    返回 ``(date_dir, record_time)``；无法解析时返回 ``(None, None)``。
+    """
+    from datetime import datetime as dt
+
+    parts = [p for p in absolute_file_path.replace("\\", "/").split("/") if p]
+    try:
+        if "playbacks" not in parts:
+            return None, None
+        i = parts.index("playbacks")
+        # playbacks, app, stream, YYYY, MM, DD, filename
+        if len(parts) < i + 7:
+            return None, None
+        y, mo, d = parts[i + 3], parts[i + 4], parts[i + 5]
+        if len(y) != 4 or not y.isdigit() or not mo.isdigit() or not d.isdigit():
+            return None, None
+        date_dir = f"{y}/{mo}/{d}"
+        try:
+            record_time = dt.fromtimestamp(os.path.getmtime(absolute_file_path))
+        except OSError:
+            try:
+                record_time = dt(int(y), int(mo), int(d))
+            except ValueError:
+                return None, None
+        return date_dir, record_time
+    except (ValueError, IndexError, OSError):
+        return None, None
+
+
 def extract_thumbnail_from_video(video_path, output_path=None, frame_position=0.1):
     """从视频文件中抽取一帧作为封面
     
@@ -1394,6 +1426,37 @@ def cleanup_device_recordings(device_id: str, max_recordings: int = 50, keep_rat
         logger.error(f"清理设备 {device_id} 录像失败: {str(e)}", exc_info=True)
 
 
+def _resolve_srs_container_path_to_host(local_path: str) -> str:
+    """将 SRS 回调中的容器内路径解析为当前进程可访问的宿主机路径。
+
+    SRS 侧 dvr 文件路径通常为容器视角（如 /data/playbacks/...）。compose 约定宿主机 /data 映射为容器
+    /data。若 VIDEO 在宿主机直接运行且本机尚未挂载 /data，则需把前缀 /data 映射到 SRS_HOST_DATA_ROOT
+    （默认与约定一致为 /data；可通过环境变量覆盖）。若原路径已存在（如在 VIDEO 容器内已挂载 /data），则保持不变。
+    """
+    if not local_path:
+        return local_path
+    container_root = (os.getenv("SRS_CONTAINER_DATA_ROOT") or "/data").rstrip("/\\")
+    try:
+        p = os.path.normpath(local_path)
+    except Exception:
+        return local_path
+    if not (p == container_root or p.startswith(container_root + os.sep)):
+        return local_path
+    if os.path.lexists(p):
+        return local_path
+    host_root = (os.getenv("SRS_HOST_DATA_ROOT") or "").strip()
+    if not host_root:
+        host_root = "/data"
+    else:
+        host_root = os.path.expanduser(os.path.expandvars(host_root))
+    host_root = os.path.normpath(host_root)
+    try:
+        rel = os.path.relpath(p, container_root)
+    except ValueError:
+        return local_path
+    return os.path.join(host_root, rel)
+
+
 @camera_bp.route('/callback/on_dvr', methods=['POST'])
 def on_dvr_callback():
     """SRS录像生成回调接口
@@ -1475,34 +1538,38 @@ def on_dvr_callback():
                     logger.debug(f"on_dvr回调：通过rtmp_stream匹配到设备 stream={stream}, device_id={device_id}, pattern={pattern}")
                     break
         
-        # 如果仍然找不到，尝试从文件路径中提取设备ID
-        # 文件路径格式：/data/playbacks/live/{device_id}/YYYY/MM/DD/filename
-        # 或：/data/playbacks/live/{stream}/YYYY/MM/DD/filename
+        # 如果仍然找不到，尝试从文件路径中提取设备/流 ID（直播：playbacks/live/<id>/... ，AI：playbacks/ai/<id>/...）
         if not device and file_path:
             try:
-                path_parts = file_path.split(os.sep)
-                # 查找 'live' 目录后面的部分，可能是设备ID或流名称
-                for i, part in enumerate(path_parts):
-                    if part == 'live' and i + 1 < len(path_parts):
-                        potential_id = path_parts[i + 1]
-                        # 尝试作为设备ID查询
+                path_parts = [p for p in file_path.replace("\\", "/").split("/") if p]
+                if "playbacks" in path_parts:
+                    pi = path_parts.index("playbacks")
+                    # playbacks / <app> / <stream_or_device_id> / ...
+                    if pi + 2 < len(path_parts):
+                        potential_id = path_parts[pi + 2]
                         device = Device.query.get(potential_id)
                         if device:
                             device_id = potential_id
                             logger.debug(f"on_dvr回调：从文件路径中提取设备ID file_path={file_path}, device_id={device_id}")
-                            break
-                        # 如果作为设备ID找不到，尝试通过rtmp_stream匹配
                         if not device:
-                            for pattern in [f"live/{potential_id}", potential_id, f"/live/{potential_id}", f"/{potential_id}"]:
+                            app_name = path_parts[pi + 1] if pi + 1 < len(path_parts) else ""
+                            for pattern in [
+                                f"{app_name}/{potential_id}",
+                                f"live/{potential_id}",
+                                potential_id,
+                                f"/live/{potential_id}",
+                                f"/{potential_id}",
+                            ]:
                                 device = Device.query.filter(
                                     Device.rtmp_stream.like(f'%{pattern}%')
                                 ).first()
                                 if device:
                                     device_id = device.id
-                                    logger.debug(f"on_dvr回调：从文件路径中通过rtmp_stream匹配到设备 file_path={file_path}, stream={potential_id}, device_id={device_id}, pattern={pattern}")
+                                    logger.debug(
+                                        f"on_dvr回调：从文件路径通过 rtmp_stream 匹配设备 "
+                                        f"file_path={file_path}, stream={potential_id}, device_id={device_id}, pattern={pattern}"
+                                    )
                                     break
-                        if device:
-                            break
             except Exception as e:
                 logger.debug(f"on_dvr回调：从文件路径提取设备ID失败 file_path={file_path}, error={str(e)}")
         
@@ -1538,12 +1605,13 @@ def on_dvr_callback():
             # 如果既不是绝对路径，也没有cwd，尝试直接使用
             absolute_file_path = file_path
 
+        absolute_file_path = _resolve_srs_container_path_to_host(absolute_file_path)
+
         logger.debug(f"on_dvr回调：处理后的文件路径 absolute_file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}")
         
         # 等待文件创建完成（SRS可能在回调时文件还在写入中）
         max_retries = 10
         retry_interval = 0.5  # 每次等待0.5秒
-        file_exists = False
         file_size = 0
         
         for attempt in range(max_retries):
@@ -1555,7 +1623,6 @@ def on_dvr_callback():
                     size2 = os.path.getsize(absolute_file_path)
                     if size1 == size2 and size1 > 0:
                         # 文件大小稳定且不为0，说明文件已创建完成
-                        file_exists = True
                         file_size = size1
                         logger.debug(f"on_dvr回调：文件已就绪 file_path={absolute_file_path}, size={file_size} bytes, attempts={attempt + 1}")
                         break
@@ -1566,73 +1633,30 @@ def on_dvr_callback():
             
             if attempt < max_retries - 1:
                 time.sleep(retry_interval)
-        
-        if not file_exists:
+        else:
+            # 仅在用尽 max_retries 次轮询仍未就绪时打 WARNING（中途成功则 break，不会进入此处）
             logger.warning(f"on_dvr回调：录像文件不存在或仍在写入中 file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}, max_retries={max_retries}")
             return jsonify({'code': 0, 'msg': None})
         
-        # 从文件路径中提取日期信息
-        # 文件路径格式：/data/playbacks/live/{device_id}/{year}/{month}/{day}/{filename}
-        # 例如：/data/playbacks/live/1764341204704370850/2025/11/28/1764352410083.flv
-        path_parts = absolute_file_path.split(os.sep)
-        logger.debug(f"on_dvr回调：路径解析 path_parts={path_parts}")
-        
-        # 查找设备ID在路径中的位置，然后提取日期部分
-        # 路径结构：['', 'data', 'playbacks', 'live', device_id, year, month, day, filename]
-        try:
-            # 找到 'live' 后面的设备ID位置
-            live_index = -1
-            for i, part in enumerate(path_parts):
-                if part == 'live':
-                    live_index = i
-                    break
-            
-            if live_index == -1:
-                logger.warning(f"on_dvr回调：路径中未找到'live'目录 file_path={absolute_file_path}")
-                # 使用文件修改时间作为备选方案
+        # 从文件路径提取日期：playbacks/<直播或AI等 app>/<stream>/YYYY/MM/DD/文件名
+        parsed_date_dir, parsed_record_time = _parse_srs_dvr_path_date(absolute_file_path)
+        if parsed_date_dir and parsed_record_time:
+            date_dir = parsed_date_dir
+            record_time = parsed_record_time
+            logger.debug(f"on_dvr回调：从路径解析日期 date_dir={date_dir}, record_time={record_time}")
+        else:
+            try:
                 file_mtime = os.path.getmtime(absolute_file_path)
                 record_time = datetime.fromtimestamp(file_mtime)
                 date_dir = record_time.strftime('%Y/%m/%d')
-                logger.warning(f"on_dvr回调：无法从路径解析日期，使用文件修改时间 date_dir={date_dir}, file_path={absolute_file_path}")
-            elif live_index + 4 >= len(path_parts):
-                # 路径格式不符合预期，使用文件修改时间作为备选方案
-                logger.warning(f"on_dvr回调：路径格式不符合预期 live_index={live_index}, path_length={len(path_parts)}, file_path={absolute_file_path}")
-                file_mtime = os.path.getmtime(absolute_file_path)
-                record_time = datetime.fromtimestamp(file_mtime)
+                logger.debug(
+                    f"on_dvr回调：路径非标准 SRS dvr 格式，使用文件修改时间 "
+                    f"date_dir={date_dir}, file_path={absolute_file_path}"
+                )
+            except OSError as e:
+                record_time = datetime.utcnow()
                 date_dir = record_time.strftime('%Y/%m/%d')
-                logger.warning(f"on_dvr回调：无法从路径解析日期，使用文件修改时间 date_dir={date_dir}, file_path={absolute_file_path}")
-            else:
-                # 提取日期部分：year/month/day
-                # live_index + 1 = device_id
-                # live_index + 2 = year
-                # live_index + 3 = month
-                # live_index + 4 = day
-                year = path_parts[live_index + 2]
-                month = path_parts[live_index + 3]
-                day = path_parts[live_index + 4]
-                date_dir = f"{year}/{month}/{day}"
-                # 优先使用文件修改时间作为record_time（包含完整的时间信息）
-                # 如果文件修改时间不可用，则使用从路径解析的日期（时间为00:00:00）
-                try:
-                    file_mtime = os.path.getmtime(absolute_file_path)
-                    record_time = datetime.fromtimestamp(file_mtime)
-                    logger.debug(f"on_dvr回调：使用文件修改时间作为record_time date_dir={date_dir}, record_time={record_time}")
-                except (OSError, ValueError):
-                    # 如果获取文件修改时间失败，使用从路径解析的日期
-                    try:
-                        record_time = datetime(int(year), int(month), int(day))
-                        logger.warning(f"on_dvr回调：无法获取文件修改时间，使用路径日期 date_dir={date_dir}, record_time={record_time}")
-                    except (ValueError, TypeError):
-                        # 如果日期解析也失败，使用当前时间
-                        record_time = datetime.utcnow()
-                        logger.warning(f"on_dvr回调：日期解析失败，使用当前时间 record_time={record_time}")
-        except (IndexError, ValueError) as e:
-            # 如果解析失败，使用文件修改时间作为备选方案
-            logger.warning(f"on_dvr回调：从路径解析日期失败 error={str(e)}, file_path={absolute_file_path}", exc_info=True)
-            file_mtime = os.path.getmtime(absolute_file_path)
-            record_time = datetime.fromtimestamp(file_mtime)
-            date_dir = record_time.strftime('%Y/%m/%d')
-            logger.warning(f"on_dvr回调：使用文件修改时间作为日期 date_dir={date_dir}")
+                logger.warning(f"on_dvr回调：无法解析日期与 mtime，使用当前时间 error={e}")
         
         # 获取文件名
         filename = os.path.basename(absolute_file_path)

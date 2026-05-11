@@ -27,12 +27,12 @@ services:
       - ./alert_images:/app/alert_images
       # SRS录像目录（与SRS服务共享，用于访问SRS生成的录像文件）
       # 重要说明：
-      # 1. 与 .scripts/docker/docker-compose.yml 中 SRS 一致：宿主机为 ${HOME}/srs_data，容器内为 /data（避免 macOS 挂载 /data 失败）
+      # 1. 与 .scripts/docker/docker-compose.yml 中 SRS 一致：宿主机 /data -> 容器 /data
       # 2. SRS录像实际存储在 /data/playbacks 目录下（由SRS配置的 dvr_path 决定）
       # 3. 这里挂载相同宿主机目录到容器的 /data，确保 VIDEO 服务可访问 SRS 生成的录像
       # 4. 在容器内，SRS录像文件位于 /data/playbacks/live/{device_id}/YYYY/MM/DD/*.flv
       # 5. 应用数据目录在 /app/data，SRS录像目录在 /data，两者是不同的挂载点
-      - ${HOME}/srs_data:/data:rw
+      - /data:/data:rw
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
       - ./.env.docker:/app/.env:ro
 
