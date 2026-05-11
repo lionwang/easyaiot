@@ -17,6 +17,7 @@
 target/
 **/target/
 /DEVICE/target
+/DEVICE/snap/
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
