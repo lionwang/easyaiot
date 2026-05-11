@@ -2480,9 +2480,39 @@ wait_for_zlmediakit() {
     return 1
 }
 
+# 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data）
+# 若直接 bind-mount 宿主机 /data -> 容器 /data，需该目录预先存在；无 root/sudo 时跳过并提示（compose 默认使用 ${HOME}/srs_data -> /data 不受影响）
+ensure_host_data_directory_before_srs() {
+    print_info "安装 SRS 前检查宿主机目录 /data ..."
+    local created=0
+    if [ "$EUID" -eq 0 ]; then
+        if mkdir -p /data/playbacks 2>/dev/null; then
+            chmod -R 777 /data 2>/dev/null || true
+            created=1
+        fi
+    elif command -v sudo &>/dev/null; then
+        if sudo mkdir -p /data/playbacks 2>/dev/null; then
+            sudo chmod -R 777 /data 2>/dev/null || true
+            created=1
+        fi
+    else
+        if mkdir -p /data/playbacks 2>/dev/null; then
+            chmod -R 777 /data 2>/dev/null || true
+            created=1
+        fi
+    fi
+    if [ "$created" -eq 1 ]; then
+        print_success "宿主机目录已就绪: /data（含 playbacks 子目录）"
+    else
+        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks）。使用 compose 默认 \${HOME}/srs_data:/data 时可忽略。"
+    fi
+}
+
 # 准备 SRS 配置文件
 # 强制更新模式：无论配置文件是否存在，都重新生成并自动替换 IP 地址
 prepare_srs_config() {
+    ensure_host_data_directory_before_srs
+
     local srs_config_source="${SCRIPT_DIR}/../srs/conf"
     local srs_config_target="${SCRIPT_DIR}/srs_data/conf"
     local srs_config_file="${srs_config_target}/docker.conf"

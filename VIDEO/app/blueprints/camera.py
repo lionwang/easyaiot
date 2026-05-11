@@ -1537,7 +1537,21 @@ def on_dvr_callback():
         else:
             # 如果既不是绝对路径，也没有cwd，尝试直接使用
             absolute_file_path = file_path
-        
+
+        # SRS 回调中的路径是容器内绝对路径（通常 /data/playbacks/...）。本仓库 docker-compose 将
+        # ${HOME}/srs_data 挂载为容器的 /data。若 VIDEO 在宿主机（如 IDEA）运行，需把 /data 映射到
+        # 宿主机真实目录，否则 os.path.exists 永远为 False。设置环境变量 SRS_HOST_DATA_PATH=.../srs_data
+        host_data_root = os.path.expanduser(
+            (os.getenv("SRS_HOST_DATA_PATH") or "").strip()
+        )
+        if host_data_root:
+            norm = absolute_file_path.replace("\\", "/")
+            if norm.startswith("/data/"):
+                rel = norm[len("/data/") :]
+                absolute_file_path = os.path.normpath(os.path.join(host_data_root, rel))
+            elif norm == "/data":
+                absolute_file_path = os.path.normpath(host_data_root)
+
         logger.debug(f"on_dvr回调：处理后的文件路径 absolute_file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}")
         
         # 等待文件创建完成（SRS可能在回调时文件还在写入中）
@@ -1568,7 +1582,11 @@ def on_dvr_callback():
                 time.sleep(retry_interval)
         
         if not file_exists:
-            logger.warning(f"on_dvr回调：录像文件不存在或仍在写入中 file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}, max_retries={max_retries}")
+            logger.warning(
+                "on_dvr recording file missing or still writing "
+                "(local dev: set SRS_HOST_DATA_PATH to host dir mapped to SRS container /data, e.g. ~/srs_data) "
+                f"file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}, max_retries={max_retries}"
+            )
             return jsonify({'code': 0, 'msg': None})
         
         # 从文件路径中提取日期信息
