@@ -5,6 +5,9 @@ WEB/docker-build-logs/** -diff
 # auto-labeling 上传目录：不参与 diff
 AI/services/auto-labeling/uploads/** -diff
 
+# auto-labeling 标注数据目录：不参与 diff
+AI/services/auto-labeling/static/annotations/** -diff
+
 *.png binary
 *.jpg binary
 *.mp4 binary

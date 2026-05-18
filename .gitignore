@@ -75,6 +75,9 @@ hs_err_pid*
 # auto-labeling 上传目录（运行时用户数据）
 /AI/services/auto-labeling/uploads/
 
+# auto-labeling 标注数据目录（运行时用户数据）
+/AI/services/auto-labeling/static/annotations/
+
 # CMake 构建目录
 TASK/build-linux/
 TASK/build/
