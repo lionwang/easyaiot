@@ -555,6 +555,8 @@ services:
 
   # GPUStack v2.1.2 — GPU/算力资源监测与管控（Web UI、集群与 Worker 管理）
   # Web UI: http://localhost:10180  用户 admin，密码见 GPUSTACK_BOOTSTRAP_PASSWORD（仅首次初始化生效）
+  # Dify 由 install_middleware_linux.sh 独立 compose 部署，目录: ./dify_data（端口默认 10190）
+  # 管理员默认: andywebjava@163.com / admin / basiclab@iotPe6lJsB7wSMINGCW（脚本自动初始化，可用 DIFY_ADMIN_* 覆盖）
   GPUStack:
     image: gpustack/gpustack:v2.1.2
     container_name: gpustack-server

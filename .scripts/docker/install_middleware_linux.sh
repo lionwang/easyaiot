@@ -56,6 +56,21 @@ GPUSTACK_ADMIN_PASSWORD="${GPUSTACK_ADMIN_PASSWORD:-${GPUSTACK_BOOTSTRAP_PASSWOR
 # GPUSTACK_TOKEN 由 API 动态获取；若已导出则优先使用环境变量中的值
 GPUSTACK_API_COOKIE_FILE="${SCRIPT_DIR}/logs/.gpustack_api_cookie"
 
+# Dify 1.14.2（LLM 应用平台，模型供应商对接 GPUStack）
+DIFY_VERSION="${DIFY_VERSION:-1.14.2}"
+DIFY_DIR="${SCRIPT_DIR}/dify_data"
+DIFY_COMPOSE_FILE="${DIFY_DIR}/docker-compose.yaml"
+DIFY_OVERRIDE_FILE="${DIFY_DIR}/docker-compose.override.yml"
+DIFY_PROJECT_NAME="${DIFY_PROJECT_NAME:-dify}"
+DIFY_HTTP_PORT="${DIFY_HTTP_PORT:-10190}"
+# Dify 默认管理员（首次部署时由脚本自动完成 /install 初始化）
+DIFY_ADMIN_EMAIL="${DIFY_ADMIN_EMAIL:-andywebjava@163.com}"
+DIFY_ADMIN_NAME="${DIFY_ADMIN_NAME:-admin}"
+DIFY_ADMIN_PASSWORD="${DIFY_ADMIN_PASSWORD:-basiclab@iotPe6lJsB7wSMINGCW}"
+# Dify 容器内访问 GPUStack 的 OpenAI 兼容 API（勿使用 localhost）
+GPUSTACK_DIFY_SERVER_URL="${GPUSTACK_DIFY_SERVER_URL:-http://gpustack-server}"
+DIFY_GPUSTACK_API_KEY_FILE="${SCRIPT_DIR}/logs/.dify_gpustack_api_key"
+
 # 日志文件配置
 LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$LOG_DIR"
@@ -88,6 +103,7 @@ MIDDLEWARE_SERVICES=(
     "DorisFE"
     "DorisBE"
     "GPUStack"
+    "Dify"
 )
 
 # 中间件端口映射
@@ -108,6 +124,7 @@ MIDDLEWARE_PORTS["FlinkTaskManager"]=""
 MIDDLEWARE_PORTS["DorisFE"]="8030"
 MIDDLEWARE_PORTS["DorisBE"]="8040"
 MIDDLEWARE_PORTS["GPUStack"]="10180"
+MIDDLEWARE_PORTS["Dify"]="${DIFY_HTTP_PORT}"
 
 # 中间件健康检查端点
 declare -A MIDDLEWARE_HEALTH_ENDPOINTS
@@ -127,6 +144,7 @@ MIDDLEWARE_HEALTH_ENDPOINTS["FlinkTaskManager"]=""
 MIDDLEWARE_HEALTH_ENDPOINTS["DorisFE"]="/api/bootstrap"
 MIDDLEWARE_HEALTH_ENDPOINTS["DorisBE"]="/api/health"
 MIDDLEWARE_HEALTH_ENDPOINTS["GPUStack"]="/"
+MIDDLEWARE_HEALTH_ENDPOINTS["Dify"]="/"
 
 # 日志输出函数（去掉颜色代码后写入日志文件）
 log_to_file() {
@@ -2010,6 +2028,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/doris_data/be_storage:::"     # Doris BE 存储
         "${SCRIPT_DIR}/doris_data/be_log:::"         # Doris BE 日志
         "${SCRIPT_DIR}/gpustack_data:::"             # GPUStack 数据（配置、内嵌库等）
+        "${DIFY_DIR}/volumes:::"                    # Dify 应用/数据库/向量库等
     )
     
     local created_count=0
@@ -2102,6 +2121,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/flink_data"
         "${SCRIPT_DIR}/doris_data"
         "${SCRIPT_DIR}/gpustack_data"
+        "${DIFY_DIR}"
         "${SCRIPT_DIR}/../zlmediakit"
         "${SCRIPT_DIR}/logs"
     )
@@ -2843,6 +2863,402 @@ stop_gpustack_worker() {
         print_info "停止 GPUStack Worker: $GPUSTACK_WORKER_NAME"
         docker_cli stop "$GPUSTACK_WORKER_NAME" 2>&1 | tee -a "$LOG_FILE" || true
     fi
+}
+
+# Dify Compose 命令（独立 project，避免与中间件 compose 冲突）
+dify_compose() {
+    if [ ! -f "$DIFY_COMPOSE_FILE" ]; then
+        return 1
+    fi
+    local -a compose_args=(-f "$DIFY_COMPOSE_FILE" --project-name "$DIFY_PROJECT_NAME")
+    if [ -f "$DIFY_OVERRIDE_FILE" ]; then
+        compose_args+=(-f "$DIFY_OVERRIDE_FILE")
+    fi
+    $COMPOSE_CMD "${compose_args[@]}" "$@"
+}
+
+# 下载 Dify 官方 Docker 部署文件（仅首次）
+prepare_dify_bundle() {
+    if [ -f "$DIFY_COMPOSE_FILE" ]; then
+        print_info "Dify ${DIFY_VERSION} 部署文件已就绪: $DIFY_DIR"
+        return 0
+    fi
+
+    print_section "准备 Dify ${DIFY_VERSION} 部署文件"
+
+    if ! check_command git; then
+        print_error "需要 git 以下载 Dify ${DIFY_VERSION} 部署文件"
+        return 1
+    fi
+
+    mkdir -p "$DIFY_DIR"
+    local upstream_dir="${DIFY_DIR}/.upstream"
+    rm -rf "$upstream_dir"
+
+    print_info "从 GitHub 拉取 langgenius/dify:${DIFY_VERSION} ..."
+    if ! git clone --depth 1 --branch "${DIFY_VERSION}" https://github.com/langgenius/dify.git "$upstream_dir" 2>&1 | tee -a "$LOG_FILE"; then
+        print_error "下载 Dify 部署文件失败"
+        rm -rf "$upstream_dir"
+        return 1
+    fi
+
+    if [ ! -f "${upstream_dir}/docker/docker-compose.yaml" ]; then
+        print_error "Dify 仓库中未找到 docker/docker-compose.yaml"
+        rm -rf "$upstream_dir"
+        return 1
+    fi
+
+    # 同步官方 docker 目录，保留本仓库自带的 override
+    if command -v rsync &>/dev/null; then
+        rsync -a --exclude='docker-compose.override.yml' "${upstream_dir}/docker/" "${DIFY_DIR}/" 2>&1 | tee -a "$LOG_FILE"
+    else
+        cp -a "${upstream_dir}/docker/." "${DIFY_DIR}/"
+    fi
+    rm -rf "$upstream_dir"
+
+    if [ ! -f "$DIFY_COMPOSE_FILE" ]; then
+        print_error "Dify docker-compose.yaml 未生成"
+        return 1
+    fi
+
+    print_success "Dify ${DIFY_VERSION} 部署文件已下载到 $DIFY_DIR"
+    return 0
+}
+
+# 写入/更新 Dify .env 中的单个变量
+_dify_set_env_var() {
+    local key="$1"
+    local val="$2"
+    local env_file="${DIFY_DIR}/.env"
+
+    if [ ! -f "$env_file" ]; then
+        return 1
+    fi
+
+    if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$env_file"
+    else
+        echo "${key}=${val}" >> "$env_file"
+    fi
+}
+
+# 根据宿主机 IP 生成 Dify 对外访问 URL 并写入 .env
+prepare_dify_env() {
+    local host_ip dify_base_url
+    host_ip=$(get_host_ip)
+    if [ -z "$host_ip" ]; then
+        host_ip="localhost"
+        print_warning "无法获取宿主机 IP，Dify 对外 URL 将使用 localhost"
+    fi
+
+    dify_base_url="http://${host_ip}:${DIFY_HTTP_PORT}"
+    export DIFY_PUBLIC_URL="$dify_base_url"
+
+    if [ ! -f "${DIFY_DIR}/.env" ]; then
+        if [ -f "${DIFY_DIR}/.env.example" ]; then
+            cp "${DIFY_DIR}/.env.example" "${DIFY_DIR}/.env"
+        else
+            print_error "未找到 ${DIFY_DIR}/.env.example"
+            return 1
+        fi
+    fi
+
+    _dify_set_env_var "EXPOSE_NGINX_PORT" "${DIFY_HTTP_PORT}"
+    _dify_set_env_var "NGINX_PORT" "80"
+    # 仅写站点根 URL；dify-web entrypoint 会追加 /console/api、/api，api 侧也会拼接路径
+    _dify_set_env_var "CONSOLE_API_URL" "${dify_base_url}"
+    _dify_set_env_var "CONSOLE_WEB_URL" "${dify_base_url}"
+    _dify_set_env_var "SERVICE_API_URL" "${dify_base_url}"
+    _dify_set_env_var "APP_API_URL" "${dify_base_url}"
+    _dify_set_env_var "APP_WEB_URL" "${dify_base_url}"
+    _dify_set_env_var "FILES_URL" "${dify_base_url}"
+    _dify_set_env_var "INTERNAL_FILES_URL" "${dify_base_url}"
+    _dify_set_env_var "TRIGGER_URL" "${dify_base_url}"
+    _dify_set_env_var "ENDPOINT_URL_TEMPLATE" "${dify_base_url}/e/{hook_id}"
+    _dify_set_env_var "NEXT_PUBLIC_SOCKET_URL" "ws://${host_ip}:${DIFY_HTTP_PORT}"
+    _dify_set_env_var "VECTOR_STORE" "weaviate"
+    _dify_set_env_var "DB_TYPE" "postgresql"
+    _dify_set_env_var "COMPOSE_PROFILES" "weaviate,postgresql,collaboration"
+    # INIT_PASSWORD 用于 /console/api/init 校验，须与自动 setup 时使用的密码一致（最长 30 字符）
+    _dify_set_env_var "INIT_PASSWORD" "${DIFY_ADMIN_PASSWORD}"
+
+    print_info "Dify 访问地址: ${dify_base_url}"
+    print_info "Dify 管理员: ${DIFY_ADMIN_EMAIL} / ${DIFY_ADMIN_NAME}"
+    print_info "GPUStack 模型端点（Dify 容器内）: ${GPUSTACK_DIFY_SERVER_URL}"
+    return 0
+}
+
+# 创建 Dify 数据目录
+create_dify_storage_directories() {
+    local -a dify_dirs=(
+        "${DIFY_DIR}/volumes/app/storage"
+        "${DIFY_DIR}/volumes/db/data"
+        "${DIFY_DIR}/volumes/redis/data"
+        "${DIFY_DIR}/volumes/sandbox/dependencies"
+        "${DIFY_DIR}/volumes/sandbox/conf"
+        "${DIFY_DIR}/volumes/plugin_daemon"
+        "${DIFY_DIR}/volumes/weaviate"
+    )
+
+    for dir_path in "${dify_dirs[@]}"; do
+        mkdir -p "$dir_path" 2>/dev/null || true
+        if [ "$EUID" -eq 0 ]; then
+            chmod -R 777 "$dir_path" 2>/dev/null || true
+        elif command -v sudo &>/dev/null; then
+            sudo chmod -R 777 "$dir_path" 2>/dev/null || true
+        fi
+    done
+}
+
+# 拉取 Dify 所需镜像
+check_and_pull_dify_images() {
+    if [ ! -f "$DIFY_COMPOSE_FILE" ]; then
+        return 0
+    fi
+
+    print_info "检查 Dify 镜像..."
+    if ! dify_compose pull 2>&1 | tee -a "$LOG_FILE"; then
+        print_warning "部分 Dify 镜像拉取失败，启动时将自动重试"
+        return 1
+    fi
+    print_success "Dify 镜像检查完成"
+    return 0
+}
+
+# 等待 Dify Web 就绪
+wait_for_dify() {
+    local max_wait=180
+    local waited=0
+
+    print_info "等待 Dify 就绪（端口 ${DIFY_HTTP_PORT}）..."
+    while [ "$waited" -lt "$max_wait" ]; do
+        if curl -sf --connect-timeout 3 "http://127.0.0.1:${DIFY_HTTP_PORT}/" >/dev/null 2>&1; then
+            print_success "Dify 已就绪: ${DIFY_PUBLIC_URL:-http://localhost:${DIFY_HTTP_PORT}}"
+            return 0
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+
+    print_warning "Dify 未在 ${max_wait}s 内就绪，请稍后检查: docker compose -p ${DIFY_PROJECT_NAME} ps"
+    return 1
+}
+
+# 自动完成 Dify 首次安装（/console/api/init + /console/api/setup）
+setup_dify_admin_account() {
+    if ! check_command python3; then
+        print_warning "缺少 python3，跳过 Dify 管理员自动初始化"
+        return 1
+    fi
+
+    local api_base="http://127.0.0.1:${DIFY_HTTP_PORT}"
+    local setup_result setup_exit=0
+
+    print_info "自动初始化 Dify 管理员账号..."
+    setup_result=$(DIFY_API_BASE="$api_base" \
+        DIFY_ADMIN_EMAIL="$DIFY_ADMIN_EMAIL" \
+        DIFY_ADMIN_NAME="$DIFY_ADMIN_NAME" \
+        DIFY_ADMIN_PASSWORD="$DIFY_ADMIN_PASSWORD" \
+        python3 <<'PY'
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from http.cookiejar import CookieJar
+
+base = os.environ["DIFY_API_BASE"].rstrip("/")
+email = os.environ["DIFY_ADMIN_EMAIL"]
+name = os.environ["DIFY_ADMIN_NAME"]
+password = os.environ["DIFY_ADMIN_PASSWORD"]
+
+cj = CookieJar()
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+
+
+def request(method, path, payload=None, timeout=60):
+    url = f"{base}{path}"
+    data = None
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            return resp.status, resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", errors="replace")
+
+
+status, body = request("GET", "/console/api/setup")
+if status != 200:
+    print(f"setup_status_check_failed:{status}")
+    sys.exit(2)
+
+try:
+    setup_status = json.loads(body)
+except json.JSONDecodeError:
+    print("setup_status_invalid_json")
+    sys.exit(2)
+
+if setup_status.get("step") == "finished":
+    print("already_setup")
+    sys.exit(0)
+
+status, body = request("POST", "/console/api/init", {"password": password})
+if status not in (200, 201):
+    print(f"init_failed:{status}")
+    sys.exit(3)
+
+status, body = request(
+    "POST",
+    "/console/api/setup",
+    {"email": email, "name": name, "password": password},
+)
+if status not in (200, 201):
+    print(f"setup_failed:{status}")
+    sys.exit(4)
+
+print("setup_ok")
+PY
+    ) || setup_exit=$?
+
+    case "$setup_result" in
+        already_setup)
+            print_info "Dify 已完成初始化，跳过管理员创建"
+            return 0
+            ;;
+        setup_ok)
+            print_success "Dify 管理员已自动初始化"
+            print_info "  邮箱: ${DIFY_ADMIN_EMAIL}"
+            print_info "  用户名: ${DIFY_ADMIN_NAME}"
+            return 0
+            ;;
+        *)
+            print_warning "Dify 管理员自动初始化未完成${setup_result:+ (${setup_result})}，请访问 ${DIFY_PUBLIC_URL:-${api_base}}/install 手动完成"
+            return 1
+            ;;
+    esac
+}
+
+# 为 Dify 自动创建 GPUStack API Key（可选，失败不影响 Dify 部署）
+ensure_gpustack_api_key_for_dify() {
+    if [ -f "$DIFY_GPUSTACK_API_KEY_FILE" ]; then
+        print_info "已存在 Dify 用 GPUStack API Key 记录: $DIFY_GPUSTACK_API_KEY_FILE"
+        return 0
+    fi
+
+    if ! check_command curl || ! check_command python3; then
+        return 1
+    fi
+
+    if ! gpustack_api_login; then
+        print_warning "GPUStack 登录失败，跳过自动创建 API Key"
+        return 1
+    fi
+
+    local api_base resp http_code key_value
+    api_base=$(_gpustack_api_base)
+
+    resp=$(curl -sS -w $'\n%{http_code}' \
+        -X POST "${api_base}/v2/api-keys" \
+        -H 'Content-Type: application/json' \
+        -b "$GPUSTACK_API_COOKIE_FILE" \
+        -d '{"name":"dify-easyaiot","description":"Auto-created for Dify model provider"}' 2>/dev/null) || return 1
+
+    http_code="${resp##*$'\n'}"
+    resp="${resp%$'\n'*}"
+
+    if [ "$http_code" != "200" ] && [ "$http_code" != "201" ]; then
+        print_warning "自动创建 GPUStack API Key 失败 (HTTP ${http_code})"
+        return 1
+    fi
+
+    key_value=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('value',''))" 2>/dev/null) || key_value=""
+    if [ -z "$key_value" ]; then
+        print_warning "未能解析 GPUStack API Key"
+        return 1
+    fi
+
+    umask 077
+    printf '%s\n' "$key_value" > "$DIFY_GPUSTACK_API_KEY_FILE"
+    chmod 600 "$DIFY_GPUSTACK_API_KEY_FILE" 2>/dev/null || true
+    print_success "已创建 GPUStack API Key（供 Dify 使用），已保存至: $DIFY_GPUSTACK_API_KEY_FILE"
+    return 0
+}
+
+# 打印 Dify + GPUStack 模型供应商配置说明
+print_dify_gpustack_integration_guide() {
+    local api_key_hint="（请在 GPUStack 控制台创建 API Key）"
+    if [ -f "$DIFY_GPUSTACK_API_KEY_FILE" ]; then
+        api_key_hint="（已自动生成，见 ${DIFY_GPUSTACK_API_KEY_FILE}）"
+    fi
+
+    echo ""
+    print_section "Dify + GPUStack 模型配置"
+    print_info "Dify 控制台: ${DIFY_PUBLIC_URL:-http://localhost:${DIFY_HTTP_PORT}}"
+    print_info "  邮箱: ${DIFY_ADMIN_EMAIL}"
+    print_info "  用户名: ${DIFY_ADMIN_NAME}"
+    print_info "  密码: ${DIFY_ADMIN_PASSWORD}"
+    print_info "GPUStack 控制台: http://localhost:10180"
+    print_info "  用户: ${GPUSTACK_ADMIN_USER}"
+    print_info "  在「部署」中发布模型后，于 Dify 中配置："
+    print_info "  1. 插件 -> 从市场安装「GPUStack」"
+    print_info "  2. 设置 -> 模型供应商 -> GPUStack -> 添加模型"
+    print_info "     Server URL: ${GPUSTACK_DIFY_SERVER_URL}"
+    print_info "     API Key: ${api_key_hint}"
+    print_info "     模型名称须与 GPUStack 中已部署模型名称一致"
+    echo ""
+}
+
+# 部署 Dify 1.14.2
+deploy_dify() {
+    print_section "部署 Dify ${DIFY_VERSION}"
+
+    if ! docker_cli ps &>/dev/null; then
+        print_error "无法访问 Docker，跳过 Dify 部署"
+        return 1
+    fi
+
+    if ! prepare_dify_bundle; then
+        return 1
+    fi
+
+    if [ ! -f "$DIFY_OVERRIDE_FILE" ]; then
+        print_warning "未找到 $DIFY_OVERRIDE_FILE，Dify 可能无法通过 Docker 网络访问 GPUStack"
+    fi
+
+    if ! prepare_dify_env; then
+        return 1
+    fi
+
+    create_dify_storage_directories
+
+    check_and_pull_dify_images || true
+
+    print_info "启动 Dify 服务（project=${DIFY_PROJECT_NAME}）..."
+    if ! dify_compose up -d 2>&1 | tee -a "$LOG_FILE"; then
+        print_error "Dify 启动失败"
+        return 1
+    fi
+
+    wait_for_dify || true
+    setup_dify_admin_account || true
+    ensure_gpustack_api_key_for_dify || true
+    print_dify_gpustack_integration_guide
+    print_success "Dify ${DIFY_VERSION} 部署完成"
+    return 0
+}
+
+# 停止 Dify
+stop_dify() {
+    if [ ! -f "$DIFY_COMPOSE_FILE" ]; then
+        return 0
+    fi
+
+    print_info "停止 Dify 服务..."
+    dify_compose down 2>&1 | tee -a "$LOG_FILE" || true
 }
 
 # 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data；compose 挂载 /data:/data）
@@ -4723,6 +5139,9 @@ extract_ports_from_compose() {
             "GPUStack")
                 ports=("10180" "10161")
                 ;;
+            "Dify")
+                ports=("${DIFY_HTTP_PORT}")
+                ;;
         esac
     fi
     
@@ -4762,6 +5181,7 @@ check_and_clean_ports() {
             "DorisFE") container_name="doris-fe-server" ;;
             "DorisBE") container_name="doris-be-server" ;;
             "GPUStack") container_name="gpustack-server" ;;
+            "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
         esac
         
         if [ -n "$container_name" ]; then
@@ -5354,6 +5774,7 @@ check_and_clean_ports() {
                                     "DorisFE") container_name="doris-fe-server" ;;
                                     "DorisBE") container_name="doris-be-server" ;;
                                     "GPUStack") container_name="gpustack-server" ;;
+                                    "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
                                 esac
                                 
                                 if [ -n "$container_name" ]; then
@@ -5480,12 +5901,13 @@ cleanup_stale_containers() {
                 "DorisFE") container_names+=("doris-fe-server") ;;
                 "DorisBE") container_names+=("doris-be-server") ;;
                 "GPUStack") container_names+=("gpustack-server") ;;
+                "Dify") container_names+=("${DIFY_PROJECT_NAME}-nginx-1") ;;
             esac
         fi
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|flink-jobmanager|flink-taskmanager|doris-fe-server|doris-be-server|gpustack-server|gpustack-worker)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server|flink-jobmanager|flink-taskmanager|doris-fe-server|doris-be-server|gpustack-server|gpustack-worker|${DIFY_PROJECT_NAME}-)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -5587,6 +6009,7 @@ install_middleware() {
             "DorisFE") container_name="doris-fe-server" ;;
             "DorisBE") container_name="doris-be-server" ;;
             "GPUStack") container_name="gpustack-server" ;;
+            "Dify") container_name="${DIFY_PROJECT_NAME}-nginx-1" ;;
         esac
         
         if [ -n "$container_name" ]; then
@@ -5613,6 +6036,7 @@ install_middleware() {
                 "DorisFE") print_info "  docker logs doris-fe-server" ;;
                 "DorisBE") print_info "  docker logs doris-be-server" ;;
                 "GPUStack") print_info "  docker logs gpustack-server" ;;
+                "Dify") print_info "  cd ${DIFY_DIR} && docker compose -p ${DIFY_PROJECT_NAME} logs" ;;
                 *) print_info "  docker-compose logs $service" ;;
             esac
         done
@@ -5623,12 +6047,18 @@ install_middleware() {
     echo ""
     wait_for_gpustack_server || true
     deploy_gpustack_worker || print_warning "GPUStack Worker 部署失败，可稍后手动执行 deploy_gpustack_worker 相关命令"
+
+    # 部署 Dify（模型供应商对接 GPUStack）
+    echo ""
+    deploy_dify || print_warning "Dify 部署失败，可稍后重新执行: ./install_middleware_linux.sh start"
     
     print_success "中间件安装完成"
     echo ""
     print_info "GPUStack 资源管控: http://localhost:10180"
     print_info "  用户: admin"
     print_info "  密码: ${GPUSTACK_BOOTSTRAP_PASSWORD:-basiclab@iotp4JWmQSvzdh0z4mF}"
+    print_info "Dify LLM 平台: http://localhost:${DIFY_HTTP_PORT}"
+    print_info "  邮箱: ${DIFY_ADMIN_EMAIL}  用户名: ${DIFY_ADMIN_NAME}  密码: ${DIFY_ADMIN_PASSWORD}"
     echo ""
     print_info "等待服务启动..."
     sleep 10
@@ -5727,6 +6157,10 @@ start_middleware() {
     echo ""
     wait_for_gpustack_server || true
     deploy_gpustack_worker || print_warning "GPUStack Worker 部署失败"
+
+    # 启动 Dify
+    echo ""
+    deploy_dify || print_warning "Dify 启动失败"
     
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
@@ -5742,6 +6176,7 @@ stop_middleware() {
     
     print_info "停止所有中间件服务..."
     stop_gpustack_worker
+    stop_dify
     $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>&1 | tee -a "$LOG_FILE"
     
     print_success "所有中间件已停止"
@@ -5803,6 +6238,10 @@ restart_middleware() {
     echo ""
     wait_for_gpustack_server || true
     deploy_gpustack_worker || print_warning "GPUStack Worker 部署失败"
+
+    # 重启 Dify
+    echo ""
+    deploy_dify || print_warning "Dify 重启失败"
     
     sleep 5
     bash "${SCRIPT_DIR}/set_permanent_token.sh" >/dev/null 2>&1 || true
@@ -5817,6 +6256,12 @@ status_middleware() {
     check_compose_file
     
     $COMPOSE_CMD -f "$COMPOSE_FILE" ps 2>&1 | tee -a "$LOG_FILE"
+
+    if [ -f "$DIFY_COMPOSE_FILE" ]; then
+        echo ""
+        print_info "Dify 服务状态:"
+        dify_compose ps 2>&1 | tee -a "$LOG_FILE" || true
+    fi
 }
 
 # 查看日志
@@ -5827,9 +6272,24 @@ view_logs() {
     check_docker_compose
     check_compose_file
     
+    if [ "$service" = "Dify" ] || [ "$service" = "dify" ]; then
+        if [ -f "$DIFY_COMPOSE_FILE" ]; then
+            print_info "查看 Dify 日志..."
+            dify_compose logs --tail=100 2>&1 | tee -a "$LOG_FILE"
+        else
+            print_error "Dify 尚未部署"
+        fi
+        return
+    fi
+
     if [ -z "$service" ]; then
         print_info "查看所有中间件日志..."
         $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 2>&1 | tee -a "$LOG_FILE"
+        if [ -f "$DIFY_COMPOSE_FILE" ]; then
+            echo ""
+            print_info "Dify 日志（最近 50 行）:"
+            dify_compose logs --tail=50 2>&1 | tee -a "$LOG_FILE" || true
+        fi
     else
         print_info "查看 $service 服务日志..."
         $COMPOSE_CMD -f "$COMPOSE_FILE" logs --tail=100 "$service" 2>&1 | tee -a "$LOG_FILE"
@@ -5910,6 +6370,8 @@ clean_middleware() {
         
         # 第一步：先停止所有容器（正常停止）
         print_info "正在停止所有中间件服务..."
+        stop_gpustack_worker
+        stop_dify
         $COMPOSE_CMD -f "$COMPOSE_FILE" stop 2>&1 | tee -a "$LOG_FILE"
         
         # 等待容器停止
@@ -5969,6 +6431,13 @@ clean_middleware() {
             print_info "删除 GPUStack Worker 容器: $GPUSTACK_WORKER_NAME"
             docker_cli rm -f "$GPUSTACK_WORKER_NAME" 2>&1 | tee -a "$LOG_FILE" || true
         fi
+
+        # 删除 Dify 容器与卷
+        if [ -f "$DIFY_COMPOSE_FILE" ]; then
+            print_info "删除 Dify 容器与数据卷..."
+            dify_compose down -v 2>&1 | tee -a "$LOG_FILE" || true
+        fi
+        rm -f "$DIFY_GPUSTACK_API_KEY_FILE" 2>/dev/null || true
         
         # 第五步：删除所有 bind mount 的宿主机存储目录
         print_info "删除所有 bind mount 存储目录..."
@@ -5985,6 +6454,7 @@ clean_middleware() {
             "flink_data"                # Flink JobManager / TaskManager 数据
             "doris_data"                # Doris FE / BE 数据与日志
             "gpustack_data"             # GPUStack 数据
+            "dify_data"                 # Dify 部署目录（含 volumes、compose 与 .env）
             "srs_data"                  # SRS 配置、数据和回放
             "nodered_data"              # NodeRED 数据
         )
@@ -6138,6 +6608,10 @@ update_middleware() {
     echo ""
     wait_for_gpustack_server || true
     deploy_gpustack_worker || print_warning "GPUStack Worker 部署失败"
+
+    # 更新 Dify
+    echo ""
+    deploy_dify || print_warning "Dify 更新失败"
 }
 
 # 显示帮助信息
@@ -6166,6 +6640,11 @@ show_help() {
     for service in "${MIDDLEWARE_SERVICES[@]}"; do
         echo "  - $service"
     done
+    echo ""
+    echo "Dify LLM 平台（${DIFY_VERSION}）:"
+    echo "  访问: http://localhost:${DIFY_HTTP_PORT}"
+    echo "  模型供应商: GPUStack（Server URL: ${GPUSTACK_DIFY_SERVER_URL}）"
+    echo "  日志: ./install_middleware_linux.sh logs Dify"
     echo ""
 }
 

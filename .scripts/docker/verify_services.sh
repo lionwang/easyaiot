@@ -226,6 +226,10 @@ verify_service "EMQX" "emqx-server" "1883,8883,8083,8084,18083" \
 verify_service "GPUStack" "gpustack-server" "10180,10161" \
     "curl -f http://127.0.0.1:10180/ > /dev/null 2>&1"
 
+# Dify 1.14.2（独立 compose project: dify）
+verify_service "Dify" "dify-nginx-1" "10190" \
+    "curl -f http://127.0.0.1:10190/ > /dev/null 2>&1"
+
 # 显示总结
 print_section "验证总结"
 

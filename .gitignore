@@ -56,6 +56,7 @@ hs_err_pid*
 .scripts/docker/standalone-logs/
 .scripts/docker/taos_data/
 .scripts/docker/gpustack_data/
+.scripts/docker/dify_data/
 
 # .scripts/nexus3 数据目录
 .scripts/nexus3/nexus_data/
