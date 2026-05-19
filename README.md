@@ -90,20 +90,20 @@ EasyAIoT is a cloud-edge-device integrated intelligent IoT platform that focuses
 The platform is ready to use out of the box, with multiple pre-trained models built in for security monitoring, industrial sites, smart transportation, and similar scenarios. Select them directly in algorithm tasks for rapid deployment and inference—no training from scratch required to cover common vision detection needs.
 </p>
 
-| Model Name | Inference Format | Version | Capability |
+| Model Name | Inference Format | Base Model | Capability |
 | :-- | :--: | :--: | :-- |
-| Safety Helmet Model | ONNX | v1.0.1 | Detect whether workers are wearing safety helmets |
-| Sleeping on Duty Model | PyTorch | v1.0.0 | Detect sleeping on duty, leaving post, and other abnormal behaviors |
-| Person Detection Model | PyTorch | v1.0.0 | General human detection for identifying and locating people in the frame |
-| License Plate Recognition | ONNX | v1.0.0 | Recognize vehicle license plate information |
-| Reflective Vest Model | PyTorch | v1.0.0 | Detect whether workers are wearing reflective vests |
-| Flame Model | PyTorch | v1.0.0 | Detect open flames and fire hazards |
-| Smoking Detection Model | PyTorch | v1.0.0 | Detect smoking behavior |
-| Phone Call Detection Model | ONNX | v1.0.0 | Detect phone calls and mobile phone use |
-| Road Waterlogging Model | ONNX | v1.0.0 | Detect road water accumulation and surface flooding |
-| Face Mask Model | ONNX | v1.0.0 | Detect whether people are wearing masks correctly |
-| Fall Detection Model | ONNX | v1.0.0 | Detect falls and other abnormal postures |
-| Face Detection Model | ONNX | v1.0.0 | Detect face locations in the frame to support face recognition workflows |
+| Safety Helmet Model | ONNX | YOLOv8 | Detect whether workers are wearing safety helmets |
+| Sleeping on Duty Model | PyTorch | YOLOv8 | Detect sleeping on duty, leaving post, and other abnormal behaviors |
+| Person Detection Model | PyTorch | YOLOv8 | General human detection for identifying and locating people in the frame |
+| License Plate Model | ONNX | YOLOv8 | Recognize vehicle license plate information |
+| Reflective Vest Model | PyTorch | YOLOv8 | Detect whether workers are wearing reflective vests |
+| Flame Model | PyTorch | YOLOv8 | Detect open flames and fire hazards |
+| Smoking Detection Model | PyTorch | YOLOv8 | Detect smoking behavior |
+| Phone Call Detection Model | ONNX | YOLOv8 | Detect phone calls and mobile phone use |
+| Road Waterlogging Model | ONNX | YOLOv8 | Detect road water accumulation and surface flooding |
+| Face Mask Model | ONNX | YOLOv8 | Detect whether people are wearing masks correctly |
+| Fall Detection Model | ONNX | YOLOv8 | Detect falls and other abnormal postures |
+| Face Detection Model | ONNX | YOLOv8 | Detect face locations in the frame to support face recognition workflows |
 
 ### 💡 Technical Philosophy
 

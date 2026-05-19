@@ -90,20 +90,20 @@ EasyAIoT est une plateforme intelligente d'Internet des Objets (IoT) à intégra
 La plateforme est prête à l'emploi, avec plusieurs modèles pré-entraînés intégrés pour la surveillance de sécurité, les sites industriels, les transports intelligents et d'autres scénarios. Sélectionnez-les directement dans les tâches d'algorithme pour un déploiement et une inférence rapides, sans formation à partir de zéro pour couvrir les besoins courants de détection visuelle.
 </p>
 
-| Nom du modèle | Format d'inférence | Version | Capacité |
+| Nom du modèle | Format d'inférence | Modèle de base | Capacité |
 | :-- | :--: | :--: | :-- |
-| Modèle casque de sécurité | ONNX | v1.0.1 | Détecter si les travailleurs portent un casque de sécurité |
-| Modèle sommeil en service | PyTorch | v1.0.0 | Détecter le sommeil en service, l'abandon de poste et autres comportements anormaux |
-| Modèle détection de personnes | PyTorch | v1.0.0 | Détection humaine générale pour identifier et localiser les personnes dans l'image |
-| Reconnaissance de plaques | ONNX | v1.0.0 | Reconnaître les informations des plaques d'immatriculation |
-| Modèle gilet réfléchissant | PyTorch | v1.0.0 | Détecter si les travailleurs portent un gilet réfléchissant |
-| Modèle flamme | PyTorch | v1.0.0 | Détecter les flammes nues et les risques d'incendie |
-| Modèle détection de tabagisme | PyTorch | v1.0.0 | Détecter le comportement de tabagisme |
-| Modèle appel téléphonique | ONNX | v1.0.0 | Détecter les appels téléphoniques et l'utilisation du téléphone mobile |
-| Modèle eau sur route | ONNX | v1.0.0 | Détecter l'accumulation d'eau sur la route et les inondations de surface |
-| Modèle masque facial | ONNX | v1.0.0 | Détecter si les personnes portent correctement un masque |
-| Modèle détection de chute | ONNX | v1.0.0 | Détecter les chutes et autres postures anormales |
-| Modèle détection de visage | ONNX | v1.0.0 | Détecter les positions des visages dans l'image pour soutenir les flux de reconnaissance faciale |
+| Modèle casque de sécurité | ONNX | YOLOv8 | Détecter si les travailleurs portent un casque de sécurité |
+| Modèle sommeil en service | PyTorch | YOLOv8 | Détecter le sommeil en service, l'abandon de poste et autres comportements anormaux |
+| Modèle détection de personnes | PyTorch | YOLOv8 | Détection humaine générale pour identifier et localiser les personnes dans l'image |
+| Modèle de plaques | ONNX | YOLOv8 | Reconnaître les informations des plaques d'immatriculation |
+| Modèle gilet réfléchissant | PyTorch | YOLOv8 | Détecter si les travailleurs portent un gilet réfléchissant |
+| Modèle flamme | PyTorch | YOLOv8 | Détecter les flammes nues et les risques d'incendie |
+| Modèle détection de tabagisme | PyTorch | YOLOv8 | Détecter le comportement de tabagisme |
+| Modèle appel téléphonique | ONNX | YOLOv8 | Détecter les appels téléphoniques et l'utilisation du téléphone mobile |
+| Modèle eau sur route | ONNX | YOLOv8 | Détecter l'accumulation d'eau sur la route et les inondations de surface |
+| Modèle masque facial | ONNX | YOLOv8 | Détecter si les personnes portent correctement un masque |
+| Modèle détection de chute | ONNX | YOLOv8 | Détecter les chutes et autres postures anormales |
+| Modèle détection de visage | ONNX | YOLOv8 | Détecter les positions des visages dans l'image pour soutenir les flux de reconnaissance faciale |
 
 ### 💡 Philosophie technique
 
