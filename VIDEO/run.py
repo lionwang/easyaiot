@@ -283,6 +283,13 @@ def create_app():
                 
                 if directory_id_exists and auto_snap_enabled_exists and cover_image_path_exists and device_detection_region_exists:
                     print("✅ 数据库迁移检查完成，所有列和表已存在")
+
+                try:
+                    from app.services.camera_service import sync_unassigned_devices_to_default_directory
+                    synced = sync_unassigned_devices_to_default_directory()
+                    print(f"✅ 默认分组已就绪（已归入未分配设备 {synced} 台）")
+                except Exception as default_dir_err:
+                    print(f"⚠️  初始化默认分组失败: {default_dir_err}")
                 
                 # 检查 algorithm_task 表的新字段
                 try:

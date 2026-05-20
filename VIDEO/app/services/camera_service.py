@@ -19,7 +19,9 @@ from wsdiscovery import WSDiscovery, Scope
 
 from app.services.onvif_service import OnvifCamera
 from app.utils.ip_utils import IpReachabilityMonitor, resolve_ipv4_for_stream_urls
-from models import Device, db, DeviceDetectionRegion
+from models import Device, db, DeviceDetectionRegion, DeviceDirectory
+
+DEFAULT_DIRECTORY_NAME = '默认分组'
 
 # 全局变量定义
 _onvif_cameras = {}
@@ -28,6 +30,53 @@ _monitor = IpReachabilityMonitor(int(os.getenv('CAMERA_ONLINE_INTERVAL', 20)))
 logger = logging.getLogger(__name__)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 scheduler = BackgroundScheduler(timezone=tzlocal.get_localzone_name())
+
+
+def is_default_directory(directory) -> bool:
+    """根级「默认分组」为系统保留目录。"""
+    return bool(
+        directory
+        and directory.name == DEFAULT_DIRECTORY_NAME
+        and directory.parent_id is None
+    )
+
+
+def get_or_create_default_directory() -> DeviceDirectory:
+    directory = DeviceDirectory.query.filter_by(
+        name=DEFAULT_DIRECTORY_NAME,
+        parent_id=None,
+    ).first()
+    if directory:
+        return directory
+    directory = DeviceDirectory(
+        name=DEFAULT_DIRECTORY_NAME,
+        parent_id=None,
+        description='未手动分组的摄像头（含直连与国标）',
+        sort_order=-1000,
+    )
+    db.session.add(directory)
+    db.session.commit()
+    return directory
+
+
+def sync_unassigned_devices_to_default_directory() -> int:
+    """将 directory_id 为空的设备归入默认分组（含直连、国标）。"""
+    default_dir = get_or_create_default_directory()
+    updated = Device.query.filter(Device.directory_id.is_(None)).update(
+        {Device.directory_id: default_dir.id},
+        synchronize_session=False,
+    )
+    if updated:
+        db.session.commit()
+    return updated
+
+
+def directory_id_for_new_device(register_info: dict | None = None) -> int:
+    register_info = register_info or {}
+    raw = register_info.get('directory_id')
+    if raw is not None and raw != '' and raw != 0:
+        return int(raw)
+    return get_or_create_default_directory().id
 
 # 全局PTZ指令队列与锁
 ptz_queues = {}
@@ -322,6 +371,26 @@ def _default_stream_urls(device_id: str) -> tuple[str, str, str, str]:
         f'rtmp://{host}:1935/ai/{device_id}',
         f'http://{host}:8080/ai/{device_id}.flv',
     )
+
+
+def gb28181_device_stream_urls(device_id: str) -> tuple[str, str, str, str]:
+    """国标虚拟设备：播放走 WVP 点播，仅生成算法任务用的 AI 推流地址。"""
+    _, _, ai_rtmp_stream, ai_http_stream = _default_stream_urls(device_id)
+    return '', '', ai_rtmp_stream, ai_http_stream
+
+
+def resolve_device_ai_rtmp_stream(device) -> str | None:
+    """算法任务输出流：优先 ai_rtmp_stream，否则 rtmp_stream；国标设备缺失时按 device_id 生成。"""
+    ai_rtmp = (device.ai_rtmp_stream or '').strip()
+    if ai_rtmp:
+        return ai_rtmp
+    rtmp = (device.rtmp_stream or '').strip()
+    if rtmp:
+        return rtmp
+    source = (device.source or '').strip()
+    if source.lower().startswith('gb28181://'):
+        return _default_stream_urls(device.id)[2]
+    return None
 
 
 def _update_camera_ip(camera: Device, ip: str):
@@ -693,7 +762,8 @@ def register_camera_by_onvif(ip: str, port: int, password: str) -> str:
         support_move=camera_info.get('support_move', False),
         support_zoom=camera_info.get('support_zoom', False),
         nvr_id=None,
-        nvr_channel=0
+        nvr_channel=0,
+        directory_id=directory_id_for_new_device(),
     )
     
     db.session.add(camera)
@@ -831,7 +901,10 @@ def register_camera(register_info: dict) -> str:
             model = 'Camera-EasyAIoT'
         
         # 生成RTMP和HTTP播放地址，以及AI流地址
-        rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream = _generate_stream_urls(source, id)
+        if source.strip().lower().startswith('gb28181://'):
+            rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream = gb28181_device_stream_urls(id)
+        else:
+            rtmp_stream, http_stream, ai_rtmp_stream, ai_http_stream = _generate_stream_urls(source, id)
         
         # 创建设备记录，优先使用用户提供的字段，缺失的字段从ONVIF获取的信息中填充
         camera = Device(
@@ -857,7 +930,8 @@ def register_camera(register_info: dict) -> str:
             support_zoom=register_info.get('support_zoom') if register_info.get('support_zoom') is not None else camera_info.get('support_zoom', False),
             nvr_id=register_info.get('nvr_id'),
             nvr_channel=register_info.get('nvr_channel', 0),
-            enable_forward=register_info.get('enable_forward')
+            enable_forward=register_info.get('enable_forward'),
+            directory_id=directory_id_for_new_device(register_info),
         )
         
         db.session.add(camera)
@@ -957,7 +1031,8 @@ def register_camera(register_info: dict) -> str:
         support_move=camera_info.get('support_move', False),
         support_zoom=camera_info.get('support_zoom', False),
         nvr_id=None,
-        nvr_channel=0
+        nvr_channel=0,
+        directory_id=directory_id_for_new_device(register_info),
     )
 
     # 处理码流设置

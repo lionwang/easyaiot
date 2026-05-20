@@ -23,7 +23,7 @@
             <ListItem :class="item.online ? 'camera-item normal' : 'camera-item error'">
               <div class="camera-info">
                 <div class="status">{{ item.online ? '在线' : '离线' }}</div>
-                <div class="title o2">{{ item.name || item.id }}</div>
+                <div class="title o2">{{ formatCameraDeviceLabel(item) }}</div>
                 <div class="props">
                   <div class="flex" style="justify-content: space-between;">
                     <div class="prop">
@@ -55,10 +55,10 @@
                   </div>
                 </div>
                 <div class="btns">
-                  <div class="btn" @click="handlePlay(item)" v-if="item.rtmp_stream || item.http_stream">
+                  <div class="btn" @click="handlePlay(item)" v-if="hasDirectPlayStream(item)">
                     <Icon icon="octicon:play-16" :size="15" color="#3B82F6" />
                   </div>
-                  <div class="btn" @click="handlePlayAI(item)" v-if="item.ai_http_stream || item.ai_rtmp_stream">
+                  <div class="btn" @click="handlePlayAI(item)" v-if="hasDirectPlayStream(item, true)">
                     <Icon icon="hugeicons:ai-video" :size="15" color="#3B82F6" />
                   </div>
                   <div class="btn" @click="handleView(item)">
@@ -67,7 +67,7 @@
                   <div class="btn" @click="handleEdit(item)">
                     <Icon icon="ant-design:edit-filled" :size="15" color="#3B82F6" />
                   </div>
-                  <div class="btn" @click="handleToggleStream(item)">
+                  <div v-if="supportsRtspForward(item)" class="btn" @click="handleToggleStream(item)">
                     <Icon 
                       :icon="getDeviceStreamStatus(item.id) === 'running' ? 'ant-design:pause-circle-outlined' : 'ant-design:swap-outline'" 
                       :size="15" 
@@ -114,6 +114,8 @@ import DAHUA_IMAGE from "@/assets/images/video/dahua.png";
 import HUAWEI_IMAGE from "@/assets/images/video/huawei.png";
 import OTHER_IMAGE from "@/assets/images/video/other.png";
 import type { DeviceInfo, StreamStatusResponse } from '@/api/device/camera';
+import { formatCameraDeviceLabel } from '@/views/camera/utils/deviceLabel';
+import { hasDirectPlayStream, supportsRtspForward } from '@/views/camera/utils/devicePlay';
 
 const ListItem = List.Item;
 

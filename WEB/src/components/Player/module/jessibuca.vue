@@ -136,13 +136,16 @@ export default {
   mounted() {
     this.create();
     window.onerror = (msg) => (this.err = msg);
+    if (this.playUrl) {
+      this.$nextTick(() => this.play());
+    }
   },
   watch: {
-    playUrl() {
-      if (this.playUrl) {
-        this.play();
+    playUrl(url) {
+      if (url && this.jessibuca) {
+        this.$nextTick(() => this.play());
       }
-    }
+    },
   },
   async unmounted() {
     if(this.jessibuca){

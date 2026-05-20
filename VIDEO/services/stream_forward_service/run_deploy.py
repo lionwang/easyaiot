@@ -82,7 +82,7 @@ if not os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"):
         _rtsp_tr = "udp"
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
         f"rtsp_transport;{_rtsp_tr}"
-        "|stimeout;10000000"
+        "|timeout;10000000"
         "|rw_timeout;5000000"
         "|max_delay;500000"
         "|fflags;nobuffer+discardcorrupt+genpts"

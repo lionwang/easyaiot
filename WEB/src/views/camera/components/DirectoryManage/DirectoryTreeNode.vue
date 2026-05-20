@@ -29,8 +29,8 @@
         <span class="node-name">{{ directory.name }}</span>
       </div>
       
-      <!-- 操作按钮 -->
-      <div class="node-actions" @click.stop>
+      <!-- 操作按钮（默认分组不可编辑/删除） -->
+      <div v-if="!directory.is_default" class="node-actions" @click.stop>
         <a-button
           type="text"
           size="small"

@@ -1,5 +1,5 @@
 <template>
-  <div class="directory-manage-wrapper">
+  <div :class="['directory-manage-wrapper', { 'is-embedded': embedded }]">
     <div class="directory-layout">
       <!-- 左侧：目录树 -->
       <div class="directory-sidebar">
@@ -11,6 +11,12 @@
                   <PlusOutlined />
                 </template>
                 添加目录
+              </a-button>
+              <a-button @click="handleOpenJsonEditor">
+                <template #icon>
+                  <Icon icon="ant-design:code-outlined" />
+                </template>
+                JSON 编辑
               </a-button>
             </div>
             <a-input
@@ -49,18 +55,32 @@
       <!-- 右侧：设备列表 -->
       <div class="device-content">
         <div class="device-button-group">
-          <a-button type="primary" @click="handleAddDevice" :disabled="!selectedDirectoryId">
+          <a-button type="primary" :loading="syncCamerasLoading" @click="handleSyncCameras">
             <template #icon>
-              <PlusOutlined />
+              <Icon icon="ant-design:cloud-sync-outlined" />
             </template>
-            添加摄像头
+            同步摄像头
+          </a-button>
+          <a-button
+            :disabled="!selectedDirectoryId || !checkedKeys.length"
+            @click="handleBatchMoveToDirectory"
+          >
+            <template #icon>
+              <Icon icon="ant-design:folder-open-outlined" />
+            </template>
+            批量移动到目录
           </a-button>
         </div>
         <BasicTable @register="registerTable">
           <template #bodyCell="{ column, record }">
             <!-- 统一复制功能组件 -->
-            <template
-              v-if="['id', 'name', 'model'].includes(column.key)">
+            <template v-if="column.key === 'name'">
+              <span style="cursor: pointer" @click="handleCopy(record.name)">
+                <Icon icon="tdesign:copy-filled" color="#4287FCFF"/>
+                {{ formatCameraDeviceLabel(record) }}
+              </span>
+            </template>
+            <template v-else-if="['id', 'model'].includes(column.key)">
               <span style="cursor: pointer" @click="handleCopy(record[column.key])">
                 <Icon icon="tdesign:copy-filled" color="#4287FCFF"/> {{ record[column.key] }}
               </span>
@@ -81,16 +101,21 @@
       </div>
     </div>
 
-    <!-- 添加目录/摄像头模态框 -->
-    <AddDirectoryOrDeviceModal
-      @register="registerAddModal"
-      @success="handleSuccess"
-    />
-    
     <!-- 目录编辑/创建模态框 -->
     <DirectoryModal
       @register="registerDirectoryModal"
       @success="handleDirectorySuccess"
+    />
+
+    <!-- JSON 编辑设备目录 -->
+    <DirectoryJsonModal
+      @register="registerJsonModal"
+      @success="handleDirectorySuccess"
+    />
+
+    <MoveDevicesToDirectoryModal
+      @register="registerMoveModal"
+      @success="handleMoveDevicesSuccess"
     />
   </div>
 </template>
@@ -106,23 +131,38 @@ import {
   getDirectoryList,
   deleteDirectory,
   getDirectoryDevices,
-  getDeviceList,
   getStreamStatus,
   moveDeviceToDirectory,
+  refreshDevices,
+  syncGb28181Devices,
   type DeviceDirectory,
   type DeviceInfo,
   type StreamStatusResponse,
 } from '@/api/device/camera';
 import DirectoryModal from './DirectoryModal.vue';
-import AddDirectoryOrDeviceModal from './AddDirectoryOrDeviceModal.vue';
+import DirectoryJsonModal from './DirectoryJsonModal.vue';
 import DirectoryTreeNode from './DirectoryTreeNode.vue';
+import MoveDevicesToDirectoryModal from './MoveDevicesToDirectoryModal.vue';
 import {
   PlusOutlined,
 } from '@ant-design/icons-vue';
+import { formatCameraDeviceLabel } from '@/views/camera/utils/deviceLabel';
+
+withDefaults(
+  defineProps<{
+    /** 嵌入分屏监控配置态时减少外边距 */
+    embedded?: boolean;
+  }>(),
+  { embedded: false },
+);
 
 const { createMessage } = useMessage();
 const [registerDirectoryModal, { openModal: openDirectoryModal }] = useModal();
-const [registerAddModal, { openModal: openAddModal }] = useModal();
+const [registerJsonModal, { openModal: openJsonModal }] = useModal();
+const [registerMoveModal, { openModal: openMoveModal }] = useModal();
+
+const checkedKeys = ref<string[]>([]);
+const checkedRows = ref<DeviceInfo[]>([]);
 
 // 目录相关
 const selectedDirectoryId = ref<number | null>(null);
@@ -130,6 +170,7 @@ const selectedDirectoryName = ref<string>('');
 const directoryTree = ref<DeviceDirectory[]>([]);
 const expandedKeys = ref<Set<number>>(new Set());
 const directorySearchText = ref<string>('');
+const syncCamerasLoading = ref(false);
 
 // 设备流状态映射
 const deviceStreamStatuses = ref<Record<string, string>>({});
@@ -162,6 +203,18 @@ const filteredDirectoryTree = computed(() => {
   return filterTree(directoryTree.value);
 });
 
+// 查找默认分组（根级）
+const findDefaultDirectory = (nodes: DeviceDirectory[]): DeviceDirectory | null => {
+  for (const node of nodes) {
+    if (node.is_default) return node;
+    if (node.children?.length) {
+      const found = findDefaultDirectory(node.children);
+      if (found) return found;
+    }
+  }
+  return nodes.find((n) => n.name === '默认分组') || null;
+};
+
 // 收集所有目录ID（递归）
 const collectDirectoryIds = (nodes: DeviceDirectory[]): Set<number> => {
   const ids = new Set<number>();
@@ -190,9 +243,16 @@ const loadDirectoryList = async () => {
       
       directoryTree.value = data;
       
+      const defaultDir = findDefaultDirectory(data);
       if (isInitialLoad) {
-        // 首次加载时，默认不展开
-        expandedKeys.value = new Set();
+        if (defaultDir) {
+          selectedDirectoryId.value = defaultDir.id;
+          selectedDirectoryName.value = defaultDir.name;
+          expandedKeys.value = new Set([defaultDir.id]);
+          reloadDeviceTable();
+        } else {
+          expandedKeys.value = new Set();
+        }
       } else {
         // 非首次加载时，保留当前展开状态，但清理掉已经不存在的目录的展开状态
         const validIds = collectDirectoryIds(data);
@@ -311,6 +371,8 @@ const findParentDirectory = (childId: number, nodes: DeviceDirectory[]): DeviceD
 const handleSelectDirectory = (directory: DeviceDirectory) => {
   selectedDirectoryId.value = directory.id;
   selectedDirectoryName.value = directory.name;
+  checkedKeys.value = [];
+  checkedRows.value = [];
   reloadDeviceTable();
 };
 
@@ -388,7 +450,7 @@ const getDeviceColumns = () => {
     {
       title: '操作',
       dataIndex: 'action',
-      width: 100,
+      width: 140,
       fixed: 'right',
     },
   ];
@@ -513,6 +575,14 @@ const [registerTable, { reload: reloadDeviceTable }] = useTable({
   pagination: true,
   rowKey: 'id',
   canResize: true,
+  rowSelection: {
+    type: 'checkbox',
+    selectedRowKeys: checkedKeys,
+    onChange: (keys: string[], rows: DeviceInfo[]) => {
+      checkedKeys.value = keys;
+      checkedRows.value = rows;
+    },
+  },
 });
 
 // 获取流状态文本
@@ -578,6 +648,37 @@ const checkAllDevicesStreamStatus = async (devices: DeviceInfo[]) => {
   }
 };
 
+const openMoveDevicesModal = (devices: DeviceInfo[]) => {
+  if (!devices.length) {
+    createMessage.warning('请先选择摄像头');
+    return;
+  }
+  openMoveModal(true, {
+    deviceIds: devices.map((d) => d.id),
+  });
+};
+
+const handleBatchMoveToDirectory = () => {
+  if (!selectedDirectoryId.value) {
+    createMessage.warning('请先选择目录');
+    return;
+  }
+  openMoveDevicesModal(checkedRows.value);
+};
+
+const handleMoveToDirectory = (record: DeviceInfo) => {
+  openMoveDevicesModal([record]);
+};
+
+const handleMoveDevicesSuccess = () => {
+  checkedKeys.value = [];
+  checkedRows.value = [];
+  loadDirectoryList();
+  if (selectedDirectoryId.value) {
+    reloadDeviceTable();
+  }
+};
+
 // 获取表格操作按钮
 const getTableActions = (record: DeviceInfo) => {
   const actions = [
@@ -587,10 +688,15 @@ const getTableActions = (record: DeviceInfo) => {
       onClick: () => handlePlay(record)
     },
     {
-      icon: 'ant-design:disconnect-outlined',
-      tooltip: '解除关联目录',
+      icon: 'ant-design:folder-open-outlined',
+      tooltip: '移动到目录',
+      onClick: () => handleMoveToDirectory(record),
+    },
+    {
+      icon: 'ant-design:rollback-outlined',
+      tooltip: '移回默认分组',
       popConfirm: {
-        title: '确定解除此设备与目录的关联？',
+        title: '确定将此设备移回默认分组？',
         confirm: () => handleUnbindDirectory(record)
       }
     },
@@ -604,14 +710,14 @@ const handlePlay = (record: DeviceInfo) => {
   emit('play', record);
 };
 
-// 解除关联目录
+// 移回默认分组
 const handleUnbindDirectory = async (record: DeviceInfo) => {
   try {
-    createMessage.loading({ content: '正在解除关联...', key: 'unbind' });
-    const response = await moveDeviceToDirectory(record.id, null);
-    const result = response.code !== undefined ? response : { code: 0, msg: '解除关联成功' };
+    createMessage.loading({ content: '正在移回默认分组...', key: 'unbind' });
+    const response = await moveDeviceToDirectory(record.id, 0);
+    const result = response.code !== undefined ? response : { code: 0, msg: '已移回默认分组' };
     if (result.code === 0) {
-      createMessage.success({ content: '解除关联成功', key: 'unbind' });
+      createMessage.success({ content: '已移回默认分组', key: 'unbind' });
       reloadDeviceTable();
     } else {
       createMessage.error({ content: result.msg || '解除关联失败', key: 'unbind' });
@@ -645,6 +751,42 @@ async function handleCopy(text: string) {
   }
 }
 
+/** 同步直连（ONVIF 刷新）与国标（WVP 通道入库）摄像头 */
+const handleSyncCameras = async () => {
+  const parts: string[] = [];
+  try {
+    syncCamerasLoading.value = true;
+    createMessage.loading({ content: '正在同步摄像头...', key: 'sync-cameras' });
+
+    try {
+      await refreshDevices();
+      parts.push('直连设备已刷新');
+    } catch (error) {
+      console.error('刷新直连设备失败', error);
+      parts.push('直连设备刷新失败');
+    }
+
+    try {
+      const response = await syncGb28181Devices();
+      const payload = response?.code !== undefined ? response.data : response;
+      const created = payload?.created ?? 0;
+      const total = payload?.total_gb_devices ?? 0;
+      parts.push(`国标新增 ${created} 个，共 ${total} 个`);
+    } catch (error) {
+      console.error('同步国标设备失败', error);
+      parts.push('国标同步失败，请检查 WVP 服务');
+    }
+
+    createMessage.success({ content: parts.join('；'), key: 'sync-cameras' });
+    await loadDirectoryList();
+    if (selectedDirectoryId.value) {
+      reloadDeviceTable();
+    }
+  } finally {
+    syncCamerasLoading.value = false;
+  }
+};
+
 // 添加目录
 const handleAddDirectory = () => {
   openDirectoryModal(true, {
@@ -652,28 +794,13 @@ const handleAddDirectory = () => {
   });
 };
 
-// 添加摄像头
-const handleAddDevice = () => {
-  if (!selectedDirectoryId.value) {
-    createMessage.warning('请先选择目录');
-    return;
-  }
-  openAddModal(true, {
-    defaultType: 'device',
-    defaultParentId: selectedDirectoryId.value,
-  });
+// JSON 编辑设备目录
+const handleOpenJsonEditor = () => {
+  openJsonModal(true, {});
 };
 
 // 目录操作成功回调
 const handleDirectorySuccess = () => {
-  loadDirectoryList();
-  if (selectedDirectoryId.value) {
-    reloadDeviceTable();
-  }
-};
-
-// 添加成功回调
-const handleSuccess = () => {
   loadDirectoryList();
   if (selectedDirectoryId.value) {
     reloadDeviceTable();
@@ -705,6 +832,12 @@ onMounted(() => {
   background: #f0f2f5;
   min-height: calc(100vh - 200px);
   height: 100%;
+
+  &.is-embedded {
+    padding: 0;
+    background: transparent;
+    min-height: calc(100vh - 260px);
+  }
 }
 
 .directory-layout {
@@ -734,7 +867,9 @@ onMounted(() => {
       
       .tree-header-button {
         display: flex;
+        flex-wrap: wrap;
         justify-content: flex-end;
+        gap: 8px;
       }
     }
     
@@ -763,6 +898,8 @@ onMounted(() => {
 .device-button-group {
   margin-bottom: 16px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
 }
 </style>

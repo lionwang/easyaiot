@@ -1,4 +1,5 @@
 import {defHttp} from '@/utils/http/axios';
+import { normalizeWvpChannelItem } from '@/views/camera/utils/gb28181Channel';
 
 // GB28181 通过网关转发到 WVP：Path=/admin-api/gb28181/** -> RewritePath -> /api/${segment}
 // 前端请求路径为 gb28181/xxx（无 /api 前缀），网关会重写为 /api/xxx 转发到 iot-gb28181
@@ -216,11 +217,16 @@ export const queryChannelList = async (params: {
     requestParams.channelType = params.channelType;
   }
 
-  const url = params.deviceId || params.deviceIdentification
-    ? `${GB28181_PREFIX}/devices/${params.deviceId || params.deviceIdentification}/channels`
+  const sipDeviceId = params.deviceId || params.deviceIdentification;
+  const url = sipDeviceId
+    ? `${GB28181_PREFIX}/devices/${sipDeviceId}/channels`
     : `${CHANNEL_PREFIX}/list`;
   const res = await commonApi('get', url, requestParams, false);
-  return normalizePageResponse(res);
+  const { data, total } = normalizePageResponse(res);
+  const list = (data || []).map((item: any) =>
+    normalizeWvpChannelItem(item, sipDeviceId ? String(sipDeviceId) : undefined),
+  );
+  return { data: list, total };
 };
 
 /**
@@ -812,7 +818,8 @@ export const getDeviceChannels = async (deviceId: string) => {
     count: 10000,
   }, false);
   const { data, total } = normalizePageResponse(res);
-  return { data, list: data, total };
+  const list = (data || []).map((item: any) => normalizeWvpChannelItem(item, deviceId));
+  return { data: list, list, total };
 };
 
 // ====================== 其他工具接口 ======================

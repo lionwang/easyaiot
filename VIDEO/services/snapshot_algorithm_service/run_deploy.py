@@ -190,7 +190,7 @@ _OPENCV_FFMPEG_OPTIONS_CUSTOM = bool(os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"))
 if not _OPENCV_FFMPEG_OPTIONS_CUSTOM:
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
         f"rtsp_transport;{_EFFECTIVE_RTSP_TRANSPORT}"
-        "|stimeout;10000000"
+        "|timeout;10000000"
         "|rw_timeout;5000000"
         "|max_delay;500000"
         "|fflags;nobuffer+discardcorrupt+genpts"

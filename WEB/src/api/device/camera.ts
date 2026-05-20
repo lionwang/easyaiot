@@ -270,6 +270,7 @@ export interface DeviceDirectory {
   description?: string;
   sort_order: number;
   device_count?: number;
+  is_default?: boolean;
   children?: DeviceDirectory[];
   created_at?: string;
   updated_at?: string;
@@ -279,6 +280,45 @@ export interface DirectoryListResponse {
   code: number;
   msg: string;
   data: DeviceDirectory[];
+}
+
+/** 分屏监控树 - 设备节点 */
+export interface MonitorTreeDeviceNode {
+  type: 'device';
+  id: string;
+  name: string;
+  http_stream?: string;
+  rtmp_stream?: string;
+  ai_http_stream?: string;
+  ai_rtmp_stream?: string;
+  online?: boolean;
+  directory_id?: number | null;
+  device_kind?: 'direct' | 'gb28181';
+  source?: string | null;
+}
+
+/** 分屏监控树 - 目录节点 */
+export interface MonitorTreeDirectoryNode {
+  type: 'directory';
+  id: number;
+  name: string;
+  parent_id?: number | null;
+  sort_order?: number;
+  device_count?: number;
+  is_default?: boolean;
+  children: MonitorTreeDirectoryNode[];
+  devices: MonitorTreeDeviceNode[];
+}
+
+export interface DirectoryMonitorTreeData {
+  tree: MonitorTreeDirectoryNode[];
+  unassigned_devices: MonitorTreeDeviceNode[];
+}
+
+export interface DirectoryMonitorTreeResponse {
+  code: number;
+  msg: string;
+  data: DirectoryMonitorTreeData;
 }
 
 export interface DirectoryInfoResponse {
@@ -302,6 +342,35 @@ export interface DirectoryInfoResponse {
  */
 export const getDirectoryList = () => {
   return commonApi('get', `${CAMERA_PREFIX}/directory/list`);
+};
+
+/**
+ * 获取分屏监控用目录设备树（目录 + 设备，单次请求）
+ */
+export const getDirectoryMonitorTree = () => {
+  return commonApi('get', `${CAMERA_PREFIX}/directory/monitor-tree`);
+};
+
+export interface SyncGb28181DevicesResult {
+  created: number;
+  total_gb_devices: number;
+}
+
+/**
+ * 从 WVP 手动同步国标通道到设备目录（默认分组）
+ */
+export const syncGb28181Devices = () => {
+  return commonApi('post', `${CAMERA_PREFIX}/directory/sync-gb28181`, {}, {}, false);
+};
+
+/** 校验设备目录 JSON（摄像头不可重复等） */
+export const validateDirectoryJson = (tree: unknown[]) => {
+  return commonApi('post', `${CAMERA_PREFIX}/directory/validate-json`, { tree }, {}, false);
+};
+
+/** 按 JSON 同步设备目录（服务端校验并写入） */
+export const syncDirectoryFromJson = (tree: unknown[]) => {
+  return commonApi('post', `${CAMERA_PREFIX}/directory/sync-json`, { tree }, {}, false);
 };
 
 /**

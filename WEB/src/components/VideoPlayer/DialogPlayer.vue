@@ -107,6 +107,7 @@ import {copyText} from "@/utils/copyTextToClipboard";
 import {useMessage} from "@/hooks/web/useMessage";
 import {controlPTZ} from "@/api/device/camera";
 import {controlGbPtz, playByDeviceAndChannel} from "@/api/device/gb28181";
+import { getGb28181PlayIds, shouldPlayViaGb28181 } from '@/views/camera/utils/deviceLabel';
 
 const {createMessage} = useMessage()
 
@@ -145,19 +146,19 @@ const [register, {closeModal}] = useModalInner(async (record) => {
   state.iframeUrl = '';
   state.playLoading = false;
 
-  const deviceId = record?.deviceId || record?.deviceIdentification;
-  const channelId = record?.channelId ?? record?.deviceId;
-  const gbRecord = Boolean(deviceId && channelId);
+  const gbIds = getGb28181PlayIds(record);
+  const sipDeviceId = gbIds?.sipDeviceId ?? '';
+  const channelId = gbIds?.channelId ?? '';
+  const gbRecord = shouldPlayViaGb28181(record);
 
-  // 标记国标设备信息，用于云台控制接口分流
-  state.deviceIdentification = gbRecord ? String(deviceId) : '';
-  state.presetPos = gbRecord ? String(channelId) : '';
+  state.deviceIdentification = gbRecord ? sipDeviceId : '';
+  state.presetPos = gbRecord ? channelId : '';
 
-  // 国标通道：无 http_stream 时先请求点播接口获取播放地址
-  if (gbRecord && !record?.['http_stream']) {
+  // 国标通道：一律走 WVP 点播（忽略同步到 device 表的占位 http_stream）
+  if (gbRecord) {
     state.playLoading = true;
     try {
-      const res = await playByDeviceAndChannel(deviceId, channelId);
+      const res = await playByDeviceAndChannel(sipDeviceId, channelId);
       const streamContent = res?.data?.data ?? res?.data;
       const url = streamContent?.ws_flv || streamContent?.https_flv || streamContent?.rtmp || '';
       if (url) {

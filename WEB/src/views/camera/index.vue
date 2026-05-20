@@ -7,16 +7,25 @@
         :tabBarGutter="60"
         @tabClick="handleTabClick"
       >
-        <TabPane key="1" tab="设备列表">
-          <Tabs
-            v-model:activeKey="state.deviceListSubKey"
-            :tabBarGutter="24"
-            class="device-list-sub-tabs"
-          >
-            <TabPane key="source" tab="直连设备">
-              <GpuStackMonitorTip class="page-monitor-tip" />
-              <!-- 列表模式 -->
-              <BasicTable v-if="viewMode === 'table'" @register="registerTable">
+        <TabPane key="1" tab="分屏监控">
+          <SplitScreenMonitor
+            ref="splitScreenMonitorRef"
+            :initial-mode="splitScreenInitialMode"
+            @play="handleCardPlay"
+          />
+        </TabPane>
+        <TabPane key="2" tab="设备列表">
+          <GpuStackMonitorTip class="page-monitor-tip" />
+          <Gb28181DeviceDetail
+            v-if="gbDetailVisible"
+            :sip-device-id="gbDetailSipId"
+            :title="gbDetailTitle"
+            channel-hint="点击下方通道进行点播播放"
+            @back="closeGbDetail"
+          />
+          <template v-else>
+          <!-- 列表模式 -->
+          <BasicTable v-if="viewMode === 'table'" @register="registerTable">
                 <template #toolbar>
                   <div class="toolbar-buttons">
                     <a-button type="primary" @click="handleScanOnvif">
@@ -46,9 +55,14 @@
                   </div>
                 </template>
                 <template #bodyCell="{ column, record }">
-                  <!-- 统一复制功能组件 -->
+                  <template v-if="column.dataIndex === 'name'">
+                    <span style="cursor: pointer" @click="handleCopy(record.name)">
+                      <Icon icon="tdesign:copy-filled" color="#4287FCFF"/>
+                      {{ formatCameraDeviceLabel(record) }}
+                    </span>
+                  </template>
                   <template
-                    v-if="['id', 'name', 'model', 'source', 'rtmp_stream', 'http_stream', 'ai_rtmp_stream', 'ai_http_stream'].includes(column.key)">
+                    v-else-if="['id', 'model', 'source', 'rtmp_stream', 'http_stream', 'ai_rtmp_stream', 'ai_http_stream'].includes(column.key)">
             <span style="cursor: pointer" @click="handleCopy(record[column.key])"><Icon
               icon="tdesign:copy-filled" color="#4287FCFF"/> {{ record[column.key] }}</span>
                   </template>
@@ -70,8 +84,8 @@
 
               <!-- 卡片模式 -->
               <div v-else class="card-mode-wrapper">
-                <VideoCardList
-                  ref="videoCardListRef"
+                <DeviceMixedCardList
+                  ref="deviceMixedCardListRef"
                   :api="getDeviceList"
                   :params="{}"
                   @view="handleCardView"
@@ -80,6 +94,10 @@
                   @play="handleCardPlay"
                   @playAI="handleCardPlayAI"
                   @toggleStream="handleCardToggleStream"
+                  @open-gb-device="handleOpenGbDevice"
+                  @refresh-gb-device="handleRefreshGbDevice"
+                  @view-gb-device="handleViewGbDevice"
+                  @edit-gb-device="handleEditGbDevice"
                 >
                   <template #header>
                     <a-button type="primary" @click="handleScanOnvif">
@@ -107,27 +125,14 @@
                       切换视图
                     </a-button>
                   </template>
-                </VideoCardList>
+                </DeviceMixedCardList>
               </div>
+          </template>
 
-              <DialogPlayer title="视频播放" @register="registerPlayerAddModel"
-                            @success="handlePlayerSuccess"/>
-              <VideoModal @register="registerAddModel" @success="handleSuccess"/>
-            </TabPane>
-            <TabPane key="gb28181" tab="国标设备">
-              <Gb28181Video ref="gb28181VideoRef"/>
-            </TabPane>
-          </Tabs>
-        </TabPane>
-        <TabPane key="2" tab="设备目录">
-          <DirectoryManage
-            ref="directoryManageRef"
-            @view="handleCardView"
-            @edit="handleCardEdit"
-            @delete="handleCardDelete"
-            @play="handleCardPlay"
-            @toggleStream="handleCardToggleStream"
-          />
+          <DialogPlayer title="视频播放" @register="registerPlayerAddModel"
+                        @success="handlePlayerSuccess"/>
+          <VideoModal @register="registerAddModel" @success="handleSuccess"/>
+          <Gb28181DeviceModal @register="registerGbDeviceModal" @success="handleSuccess"/>
         </TabPane>
         <TabPane key="3" tab="抓拍空间">
           <SnapSpace ref="snapSpaceRef"/>
@@ -141,13 +146,10 @@
         <TabPane key="6" tab="算法任务">
           <AlgorithmTask ref="algorithmTaskRef"/>
         </TabPane>
-        <TabPane key="7" tab="GB28181分屏监控">
-          <Gb28181SplitScreen ref="gb28181SplitScreenRef"/>
-        </TabPane>
-        <TabPane key="8" tab="GB28181拉流代理">
+        <TabPane key="7" tab="拉流代理">
           <Gb28181PullProxy ref="gb28181PullProxyRef"/>
         </TabPane>
-        <TabPane key="9" tab="GB28181节点管理">
+        <TabPane key="8" tab="节点管理">
           <Gb28181Node ref="gb28181NodeRef"/>
         </TabPane>
       </Tabs>
@@ -176,15 +178,27 @@ import {
 } from '@/api/device/camera';
 import {RadarChartOutlined, SwapOutlined, SyncOutlined, VideoCameraAddOutlined} from '@ant-design/icons-vue';
 import DialogPlayer from "@/components/VideoPlayer/DialogPlayer.vue";
-import DirectoryManage from "./components/DirectoryManage/index.vue";
+import SplitScreenMonitor from "./components/SplitScreenMonitor/index.vue";
 import SnapSpace from "./components/SnapSpace/index.vue";
 import AlgorithmTask from "./components/AlgorithmTask/index.vue";
 import RecordSpace from "./components/RecordSpace/index.vue";
-import VideoCardList from "./components/VideoCardList/index.vue";
+import DeviceMixedCardList from './components/DeviceMixedCardList/index.vue';
+import Gb28181DeviceDetail from './components/Gb28181DeviceDetail/index.vue';
+import Gb28181DeviceModal from './components/Gb28181DeviceModal/index.vue';
+import type { Gb28181CardItem } from './components/Gb28181DeviceCard/index.vue';
+import {
+  fetchMergedDeviceList,
+  isGb28181SipListRow,
+  type GbSipDeviceSummary,
+} from './utils/gb28181DeviceGroup';
 import StreamForward from "./components/StreamForward/index.vue";
-import Gb28181SplitScreen from "@/views/gb28181/components/SplitScreen/index.vue";
-import Gb28181Video from "@/views/gb28181/components/Video/index.vue";
 import Gb28181PullProxy from "@/views/gb28181/components/PullProxy/index.vue";
+import { formatCameraDeviceLabel } from './utils/deviceLabel';
+import {
+  hasDirectPlayStream,
+  openDeviceInDialogPlayer,
+  supportsRtspForward,
+} from './utils/devicePlay';
 import Gb28181Node from "@/views/gb28181/components/Node/index.vue";
 import GpuStackMonitorTip from '@/components/GpuStackMonitorTip/index.vue';
 
@@ -194,23 +208,29 @@ const route = useRoute();
 
 const {createMessage} = useMessage();
 const [registerAddModel, {openModal}] = useModal();
+const [registerGbDeviceModal, {openModal: openGbDeviceModal}] = useModal();
 
 const [registerPlayerAddModel, {openModal: openPlayerAddModel}] = useModal();
 
 // Tab状态
 const state = reactive({
   activeKey: '1',
-  deviceListSubKey: 'source', // 设备列表下子 Tab：source=直连设备, gb28181=国标设备
 });
 
 // 视图模式（默认卡片模式）
 const viewMode = ref<'table' | 'card'>('card');
 
-// 目录管理组件引用
-const directoryManageRef = ref();
+// 分屏监控组件引用
+const splitScreenMonitorRef = ref();
+const splitScreenInitialMode = ref<'config' | 'monitor'>('monitor');
 
-// 视频卡片列表组件引用
-const videoCardListRef = ref();
+// 混合设备卡片列表引用
+const deviceMixedCardListRef = ref();
+
+// 国标设备详情内页
+const gbDetailVisible = ref(false);
+const gbDetailSipId = ref('');
+const gbDetailTitle = ref('');
 
 // 抓拍空间组件引用
 const snapSpaceRef = ref();
@@ -225,29 +245,39 @@ const algorithmTaskRef = ref();
 const streamForwardRef = ref();
 
 // GB28181组件引用
-const gb28181SplitScreenRef = ref();
-const gb28181VideoRef = ref();
 const gb28181PullProxyRef = ref();
 const gb28181NodeRef = ref();
 
-/** 一级 Tab key：1 设备列表 … 9 GB28181 节点管理（与模板 TabPane key 一致） */
+/** 一级 Tab key：1 分屏监控 … 8 节点管理（与模板 TabPane key 一致） */
 const CAMERA_TAB_KEYS = {
-  DEVICE_LIST: '1',
-  DIRECTORY: '2',
+  SPLIT_MONITOR: '1',
+  DEVICE_LIST: '2',
   SNAP: '3',
   RECORD: '4',
   STREAM_FORWARD: '5',
   ALGORITHM: '6',
-  GB_SPLIT: '7',
-  GB_PULL_PROXY: '8',
-  GB_NODE: '9',
+  GB_PULL_PROXY: '7',
+  GB_NODE: '8',
 } as const;
 
 const CAMERA_TAB_ID_SET = new Set<string>(Object.values(CAMERA_TAB_KEYS));
 
-/** 路由 ?tab=：仅接受 1～9 有效 key，非法则回退设备列表 */
+/** 旧版 tab 编号兼容（已移除「设备目录」独立 Tab） */
+const LEGACY_CAMERA_TAB_MAP: Record<string, string> = {
+  '3': CAMERA_TAB_KEYS.SPLIT_MONITOR,
+  '4': CAMERA_TAB_KEYS.SNAP,
+  '5': CAMERA_TAB_KEYS.RECORD,
+  '6': CAMERA_TAB_KEYS.STREAM_FORWARD,
+  '7': CAMERA_TAB_KEYS.ALGORITHM,
+  '8': CAMERA_TAB_KEYS.GB_PULL_PROXY,
+  '9': CAMERA_TAB_KEYS.GB_NODE,
+};
+
+/** 路由 ?tab=：接受 1～8；旧 3（设备目录）映射到分屏监控 */
 function normalizeCameraRouteTab(tab: string): string {
-  return CAMERA_TAB_ID_SET.has(tab) ? tab : CAMERA_TAB_KEYS.DEVICE_LIST;
+  if (CAMERA_TAB_ID_SET.has(tab)) return tab;
+  if (LEGACY_CAMERA_TAB_MAP[tab]) return LEGACY_CAMERA_TAB_MAP[tab];
+  return CAMERA_TAB_KEYS.DEVICE_LIST;
 }
 
 // Tab切换
@@ -273,10 +303,10 @@ const handleTabClick = (activeKey: string) => {
   if (activeKey === CAMERA_TAB_KEYS.STREAM_FORWARD && streamForwardRef.value) {
     streamForwardRef.value.refresh();
   }
-  // 切换到GB28181相关标签页时，可以在这里添加刷新逻辑
-  // if (activeKey === CAMERA_TAB_KEYS.GB_SPLIT && gb28181SplitScreenRef.value) {
-  //   gb28181SplitScreenRef.value.refresh();
-  // }
+  if (activeKey === CAMERA_TAB_KEYS.SPLIT_MONITOR && splitScreenMonitorRef.value) {
+    splitScreenMonitorRef.value.refresh();
+  }
+  // GB28181 拉流/节点 Tab 可按需在此 refresh
   // if (activeKey === CAMERA_TAB_KEYS.GB_PULL_PROXY && gb28181PullProxyRef.value) {
   //   gb28181PullProxyRef.value.refresh();
   // }
@@ -288,11 +318,71 @@ const handleTabClick = (activeKey: string) => {
 // 切换视图模式
 const handleToggleViewMode = () => {
   viewMode.value = viewMode.value === 'table' ? 'card' : 'table';
-  if (viewMode.value === 'card' && videoCardListRef.value) {
-    // 切换到卡片模式时刷新卡片列表
-    videoCardListRef.value.fetch();
+  if (viewMode.value === 'card' && deviceMixedCardListRef.value) {
+    deviceMixedCardListRef.value.fetch();
   }
 };
+
+function openGbDetail(summary: GbSipDeviceSummary) {
+  gbDetailSipId.value = summary.sipDeviceId;
+  gbDetailTitle.value = summary.name || summary.sipDeviceId;
+  gbDetailVisible.value = true;
+}
+
+function closeGbDetail() {
+  gbDetailVisible.value = false;
+  gbDetailSipId.value = '';
+  gbDetailTitle.value = '';
+}
+
+function handleOpenGbDevice(summary: GbSipDeviceSummary) {
+  openGbDetail(summary);
+}
+
+async function handleRefreshGbDevice(summary: GbSipDeviceSummary) {
+  try {
+    const { refreshChannelList } = await import('@/api/device/gb28181');
+    await refreshChannelList(summary.sipDeviceId);
+    createMessage.success('已开始同步通道');
+    if (deviceMixedCardListRef.value) {
+      deviceMixedCardListRef.value.fetch();
+    }
+  } catch (e) {
+    console.error(e);
+    createMessage.error('同步通道失败');
+  }
+}
+
+function gbSipIdFromRecord(record: { sip_device_id?: string; id?: string; deviceIdentification?: string }) {
+  return (
+    record.sip_device_id ||
+    String(record.deviceIdentification || '').trim() ||
+    String(record.id || '').replace(/^gb_sip_/, '')
+  );
+}
+
+function openGbDeviceInfoModal(type: 'view' | 'edit', payload: { sipDeviceId: string }) {
+  openGbDeviceModal(true, {
+    isView: type === 'view',
+    sipDeviceId: payload.sipDeviceId,
+  });
+}
+
+function handleViewGbDevice(item: Gb28181CardItem) {
+  openGbDeviceInfoModal('view', { sipDeviceId: item.deviceIdentification });
+}
+
+function handleEditGbDevice(item: Gb28181CardItem) {
+  openGbDeviceInfoModal('edit', { sipDeviceId: item.deviceIdentification });
+}
+
+function handleTableViewGbDevice(record: DeviceInfo & { sip_device_id?: string }) {
+  openGbDeviceInfoModal('view', { sipDeviceId: gbSipIdFromRecord(record) });
+}
+
+function handleTableEditGbDevice(record: DeviceInfo & { sip_device_id?: string }) {
+  openGbDeviceInfoModal('edit', { sipDeviceId: gbSipIdFromRecord(record) });
+}
 
 // 设备流状态映射
 const deviceStreamStatuses = ref<Record<string, string>>({});
@@ -360,7 +450,7 @@ const [registerTable, {reload}] = useTable({
   canResize: true,
   showIndexColumn: false,
   title: '摄像头列表',
-  api: getDeviceList,
+  api: fetchMergedDeviceList,
   columns: getBasicColumns(),
   useSearchForm: true,
   showTableSetting: false,
@@ -408,38 +498,67 @@ const startStatusCheckTimer = () => {
 
 // 获取表格操作按钮
 const getTableActions = (record) => {
-  const actions = [
-    {
-      icon: 'octicon:play-16',
-      tooltip: '播放RTMP流',
-      onClick: () => handlePlay(record)
-    }
-  ];
+  if (isGb28181SipListRow(record)) {
+    return [
+      {
+        icon: 'ant-design:eye-filled',
+        tooltip: '详情',
+        onClick: () => handleTableViewGbDevice(record),
+      },
+      {
+        icon: 'ant-design:edit-filled',
+        tooltip: '编辑',
+        onClick: () => handleTableEditGbDevice(record),
+      },
+      {
+        icon: 'ant-design:video-camera-outlined',
+        tooltip: '通道列表',
+        onClick: () => {
+          openGbDetail({
+            sipDeviceId: gbSipIdFromRecord(record),
+            name: record.name || record.sip_device_id,
+            channelCount: record.channel_count || 0,
+            online: !!record.online,
+            channels: [],
+          });
+        },
+      },
+    ];
+  }
 
-  // 如果有AI流地址，添加查看AI流按钮
-  if (record.ai_http_stream || record.ai_rtmp_stream) {
+  const actions = [];
+
+  if (hasDirectPlayStream(record)) {
     actions.push({
-      icon: 'hugeicons:ai-video',
-      tooltip: '查看AI流',
-      onClick: () => handlePlayAIStream(record)
+      icon: 'octicon:play-16',
+      tooltip: supportsRtspForward(record) ? '播放视频流' : '播放国标通道',
+      onClick: () => handlePlay(record),
     });
   }
 
-  // 根据流状态添加不同的操作按钮
-  const currentStatus = (deviceStreamStatuses.value && deviceStreamStatuses.value[record.id]) || 'unknown';
+  if (hasDirectPlayStream(record, true)) {
+    actions.push({
+      icon: 'hugeicons:ai-video',
+      tooltip: '查看AI流',
+      onClick: () => handlePlayAIStream(record),
+    });
+  }
 
-  if (currentStatus === 'running') {
-    actions.splice(1, 0, {
-      icon: 'ant-design:pause-circle-outlined',
-      tooltip: '停止RTSP转发',
-      onClick: () => handleDisableRtsp(record)
-    });
-  } else {
-    actions.splice(1, 0, {
-      icon: 'ant-design:swap-outline',
-      tooltip: '启用RTSP转发',
-      onClick: () => handleEnableRtsp(record)
-    });
+  if (supportsRtspForward(record)) {
+    const currentStatus = (deviceStreamStatuses.value && deviceStreamStatuses.value[record.id]) || 'unknown';
+    if (currentStatus === 'running') {
+      actions.push({
+        icon: 'ant-design:pause-circle-outlined',
+        tooltip: '停止RTSP转发',
+        onClick: () => handleDisableRtsp(record),
+      });
+    } else {
+      actions.push({
+        icon: 'ant-design:swap-outline',
+        tooltip: '启用RTSP转发',
+        onClick: () => handleEnableRtsp(record),
+      });
+    }
   }
 
   // 添加详情、编辑、删除按钮
@@ -482,8 +601,8 @@ const handleEnableRtsp = async (record) => {
       // 更新设备状态
       deviceStreamStatuses.value[record.id] = 'running';
       // 更新卡片列表中的流状态
-      if (videoCardListRef.value && videoCardListRef.value.deviceStreamStatuses) {
-        videoCardListRef.value.deviceStreamStatuses[record.id] = 'running';
+      if (deviceMixedCardListRef.value && deviceMixedCardListRef.value.deviceStreamStatuses) {
+        deviceMixedCardListRef.value.deviceStreamStatuses[record.id] = 'running';
       }
       // 重新加载数据
       handleSuccess();
@@ -521,8 +640,8 @@ const handleDisableRtsp = async (record) => {
       // 更新设备状态
       deviceStreamStatuses.value[record.id] = 'stopped';
       // 更新卡片列表中的流状态
-      if (videoCardListRef.value && videoCardListRef.value.deviceStreamStatuses) {
-        videoCardListRef.value.deviceStreamStatuses[record.id] = 'stopped';
+      if (deviceMixedCardListRef.value && deviceMixedCardListRef.value.deviceStreamStatuses) {
+        deviceMixedCardListRef.value.deviceStreamStatuses[record.id] = 'stopped';
       }
       // 重新加载数据
       handleSuccess();
@@ -541,19 +660,16 @@ const handleDisableRtsp = async (record) => {
   }
 };
 
-//播放RTMP
-function handlePlay(record) {
-  openPlayerAddModel(true, record)
+function handlePlay(record: DeviceInfo) {
+  if (!openDeviceInDialogPlayer(openPlayerAddModel, record)) {
+    createMessage.warning('该设备暂无可播放地址');
+  }
 }
 
-// 播放AI流
-function handlePlayAIStream(record) {
-  // 创建一个新的record对象，将ai_http_stream赋值给http_stream，以便播放器使用
-  const aiRecord = {
-    ...record,
-    http_stream: record.ai_http_stream || record.ai_rtmp_stream
-  };
-  openPlayerAddModel(true, aiRecord)
+function handlePlayAIStream(record: DeviceInfo) {
+  if (!openDeviceInDialogPlayer(openPlayerAddModel, record, { ai: true })) {
+    createMessage.warning('该设备暂无 AI 流地址');
+  }
 }
 
 async function handleCopy(text: string) {
@@ -598,8 +714,8 @@ const handleRefreshOnvifDevices = async () => {
 const handleSuccess = () => {
   if (viewMode.value === 'table') {
     reload();
-  } else if (videoCardListRef.value) {
-    videoCardListRef.value.fetch();
+  } else if (deviceMixedCardListRef.value) {
+    deviceMixedCardListRef.value.fetch();
   }
 };
 
@@ -617,10 +733,18 @@ const handleDelete = async (record) => {
 
 // 卡片视图事件处理
 const handleCardView = (record) => {
+  if (isGb28181SipListRow(record)) {
+    handleTableViewGbDevice(record);
+    return;
+  }
   openAddModal('view', record);
 };
 
 const handleCardEdit = (record) => {
+  if (isGb28181SipListRow(record)) {
+    handleTableEditGbDevice(record);
+    return;
+  }
   openAddModal('edit', record);
 };
 
@@ -644,8 +768,8 @@ const handleCardToggleStream = async (record) => {
     await handleEnableRtsp(record);
   }
   // 刷新卡片列表
-  if (videoCardListRef.value) {
-    videoCardListRef.value.fetch();
+  if (deviceMixedCardListRef.value) {
+    deviceMixedCardListRef.value.fetch();
   }
 };
 
@@ -655,9 +779,14 @@ onMounted(() => {
   // 已禁用自动状态检查定时器
   // startStatusCheckTimer();
   // 处理路由参数，自动切换到指定tab
-  const tab = route.query.tab as string;
-  if (tab) {
-    state.activeKey = normalizeCameraRouteTab(tab);
+  const rawTab = route.query.tab as string;
+  if (rawTab === '3' || route.query.mode === 'config') {
+    splitScreenInitialMode.value = 'config';
+  }
+  if (rawTab) {
+    state.activeKey = normalizeCameraRouteTab(rawTab);
+  } else if (route.query.mode === 'config') {
+    state.activeKey = CAMERA_TAB_KEYS.SPLIT_MONITOR;
   }
 });
 
@@ -699,11 +828,5 @@ onUnmounted(() => {
     gap: 8px;
   }
 
-  // 设备列表下的子 Tabs（直连设备 / 国标设备）
-  .device-list-sub-tabs {
-    :deep(.ant-tabs-nav) {
-      margin-bottom: 12px;
-    }
-  }
 }
 </style>

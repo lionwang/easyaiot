@@ -69,6 +69,103 @@ onvif_tasks = {}
 ffmpeg_processes = {}
 ffmpeg_lock = threading.Lock()
 
+# FFmpeg 8+：-stimeout/-rw_timeout 已移除，统一为 -timeout（单位仍为微秒）
+_FFMPEG_RTSP_OPEN_TIMEOUT_FLAG: Optional[str] = None
+_FFMPEG_SUPPORTS_RW_TIMEOUT: Optional[bool] = None
+
+
+def _ffmpeg_option_missing(stderr: bytes, option: str = "") -> bool:
+    err = (stderr or b"").decode(errors="replace")
+    if "Unrecognized option" in err or "Option not found" in err:
+        return True
+    if option and f"Option {option} not found" in err:
+        return True
+    return False
+
+
+def _ffmpeg_rtsp_open_timeout_flag() -> str:
+    """返回当前 ffmpeg 支持的 RTSP 连接超时参数名。"""
+    global _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
+    if _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG is not None:
+        return _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
+    try:
+        probe = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-stimeout", "1"],
+            capture_output=True,
+            timeout=5,
+        )
+        if _ffmpeg_option_missing(probe.stderr, "stimeout"):
+            _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-timeout"
+        else:
+            _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-stimeout"
+    except Exception:
+        _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG = "-timeout"
+    return _FFMPEG_RTSP_OPEN_TIMEOUT_FLAG
+
+
+def _ffmpeg_supports_rw_timeout() -> bool:
+    """FFmpeg 8+ 已移除 -rw_timeout，仅保留 -timeout 覆盖 socket I/O。"""
+    global _FFMPEG_SUPPORTS_RW_TIMEOUT
+    if _FFMPEG_SUPPORTS_RW_TIMEOUT is not None:
+        return _FFMPEG_SUPPORTS_RW_TIMEOUT
+    try:
+        # 必须带 -i，否则部分版本会把未知选项当作 trailing option 静默忽略，导致误判为支持
+        probe = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-rw_timeout",
+                "1",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=duration=0.01:size=16x16:rate=1",
+                "-frames:v",
+                "1",
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+        _FFMPEG_SUPPORTS_RW_TIMEOUT = not _ffmpeg_option_missing(probe.stderr, "rw_timeout")
+    except Exception:
+        _FFMPEG_SUPPORTS_RW_TIMEOUT = False
+    return _FFMPEG_SUPPORTS_RW_TIMEOUT
+
+
+def _ffmpeg_rtsp_timeout_args(open_us: int, io_us: int) -> list:
+    """按当前 ffmpeg 版本组装 RTSP 超时参数。"""
+    open_flag = _ffmpeg_rtsp_open_timeout_flag()
+    if _ffmpeg_supports_rw_timeout():
+        return [open_flag, str(open_us), "-rw_timeout", str(io_us)]
+    # FFmpeg 8：-timeout 同时覆盖连接与读写，取较大值
+    return [open_flag, str(max(open_us, io_us))]
+
+
+# HEVC 起播/丢包时解码器常见告警，推流通常仍可继续，不必刷屏
+_FFMPEG_DECODER_NOISE_PATTERNS = (
+    "error constructing the frame rps",
+    "could not find ref with poc",
+    "skipping invalid undecodable nalu",
+    "missing reference picture",
+    "illegal short term buffer state",
+    "no frame!",
+    "duplicate poc",
+    "discarding one",
+)
+
+
+def _ffmpeg_stderr_should_log(line: str) -> bool:
+    """过滤 FFmpeg stderr 中已知的无害解码告警。"""
+    lower = line.lower()
+    if not any(k in lower for k in ("error", "warning", "failed")):
+        return False
+    if any(p in lower for p in _FFMPEG_DECODER_NOISE_PATTERNS):
+        return False
+    return True
+
 
 class FFmpegDaemon:
     """FFmpeg进程守护线程（支持自动重启）"""
@@ -78,13 +175,26 @@ class FFmpegDaemon:
         self.process = None
         self._running = True
         self._restart_flag = False
+        self._app = current_app._get_current_object()
         self.start_daemon()
 
-    def start_daemon(self):
-        device = Device.query.get(self.device_id)
+    def _forward_enabled_in_db(self) -> bool:
+        with self._app.app_context():
+            device = Device.query.get(self.device_id)
+            return bool(device and device.enable_forward)
 
+    def start_daemon(self):
         def daemon_task():
             while self._running:
+                if not self._forward_enabled_in_db():
+                    logger.info(f"设备 {self.device_id} 已关闭观看转发(enable_forward=False)，守护线程退出")
+                    return
+
+                with self._app.app_context():
+                    device = Device.query.get(self.device_id)
+                if not device:
+                    logger.warning(f"设备 {self.device_id} 不存在，守护线程退出")
+                    return
                 # 说明：
                 # - 撕裂/下半发白/解码报错，常见诱因是上游转推重连后缺少关键帧或关键帧间隔过大；
                 #   增加关键帧频率并关闭B帧，可显著降低“重连后花屏/撕裂持续时间”。
@@ -166,17 +276,11 @@ class FFmpegDaemon:
                     ])
                     if rtsp_transport == "tcp":
                         ffmpeg_cmd.extend(["-rtsp_flags", "prefer_tcp"])
-                    ffmpeg_cmd.extend([
-                        "-stimeout",
-                        str(rtsp_open_timeout_us),
-                        "-rw_timeout",
-                        str(rtsp_io_timeout_us),
-                    ])
-                else:
-                    ffmpeg_cmd.extend([
-                        "-rw_timeout",
-                        str(rtsp_io_timeout_us),
-                    ])
+                    ffmpeg_cmd.extend(_ffmpeg_rtsp_timeout_args(rtsp_open_timeout_us, rtsp_io_timeout_us))
+                elif _ffmpeg_supports_rw_timeout():
+                    ffmpeg_cmd.extend(["-rw_timeout", str(rtsp_io_timeout_us)])
+                elif _ffmpeg_rtsp_open_timeout_flag() == "-timeout":
+                    ffmpeg_cmd.extend(["-timeout", str(rtsp_io_timeout_us)])
 
                 ffmpeg_cmd.extend([
                     "-fflags",
@@ -252,8 +356,7 @@ class FFmpegDaemon:
                     if not line:
                         break
                     line_str = line.decode().strip()
-                    # 只记录错误和警告信息
-                    if 'error' in line_str.lower() or 'warning' in line_str.lower() or 'failed' in line_str.lower():
+                    if _ffmpeg_stderr_should_log(line_str):
                         logger.warning(f"[FFmpeg:{self.device_id}] {line_str}")
 
                 # 进程结束后处理
@@ -261,8 +364,11 @@ class FFmpegDaemon:
                 if return_code != 0:
                     logger.error(f"FFmpeg异常退出，返回码: {return_code}，设备: {self.device_id}")
 
-                # 按需重启
+                # 按需重启（算法任务停止不会改 enable_forward，需显式关转发或 DB 置 False）
                 if not self._running:
+                    return
+                if not self._forward_enabled_in_db():
+                    logger.info(f"设备 {self.device_id} 已关闭观看转发，不再重启 FFmpeg")
                     return
                 if self._restart_flag:
                     self._restart_flag = False
@@ -602,6 +708,15 @@ def update_device(device_id):
                 data['model'] = 'Camera-EasyAIoT'
         
         update_camera(device_id, data)
+
+        # 关闭观看转发时同步停止守护进程（与算法任务无关）
+        ef = data.get('enable_forward')
+        if ef is False or (isinstance(ef, str) and ef.lower() in ('false', '0', 'no', 'off')):
+            with ffmpeg_lock:
+                if device_id in ffmpeg_processes:
+                    ffmpeg_processes[device_id].stop()
+                    del ffmpeg_processes[device_id]
+
         return jsonify({
             'code': 0,
             'msg': '设备信息更新成功'
@@ -1250,6 +1365,116 @@ def _parse_srs_dvr_path_date(absolute_file_path: str):
         return None, None
 
 
+def _srs_dvr_min_file_bytes() -> int:
+    try:
+        return max(512, int((os.getenv("SRS_DVR_MIN_FILE_BYTES") or "8192").strip()))
+    except Exception:
+        return 8192
+
+
+def _wait_dvr_file_stable(absolute_file_path: str, max_retries: int = 20, retry_interval: float = 0.5) -> int:
+    """等待 DVR 文件大小稳定且达到最小有效体积。返回 0 表示未就绪。"""
+    min_bytes = _srs_dvr_min_file_bytes()
+    for attempt in range(max_retries):
+        if not os.path.exists(absolute_file_path):
+            if attempt < max_retries - 1:
+                time.sleep(retry_interval)
+            continue
+        try:
+            size1 = os.path.getsize(absolute_file_path)
+            time.sleep(0.2)
+            size2 = os.path.getsize(absolute_file_path)
+            if size1 == size2 and size1 >= min_bytes:
+                return size1
+        except OSError:
+            pass
+        if attempt < max_retries - 1:
+            time.sleep(retry_interval)
+    return 0
+
+
+def _ffprobe_video_duration_seconds(video_path: str) -> float:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                video_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return max(0.0, float(result.stdout.strip()))
+    except Exception:
+        pass
+    return 0.0
+
+
+def _extract_thumbnail_ffmpeg(video_path: str, frame_position: float = 0.1) -> Optional[np.ndarray]:
+    """使用 ffmpeg 抽帧（FLV 等格式比 OpenCV CAP_ANY 更可靠）。"""
+    duration = _ffprobe_video_duration_seconds(video_path)
+    seek_sec = max(0.0, duration * frame_position) if duration > 0 else 0.0
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        str(seek_sec),
+        "-i",
+        video_path,
+        "-map",
+        "0:v:0",
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "mjpeg",
+        "pipe:1",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0 or not result.stdout:
+            return None
+        frame = cv2.imdecode(np.frombuffer(result.stdout, dtype=np.uint8), cv2.IMREAD_COLOR)
+        return frame
+    except Exception as e:
+        logger.debug(f"ffmpeg 抽帧失败: {video_path}, error={e}")
+        return None
+
+
+def _extract_thumbnail_opencv(video_path: str, frame_position: float = 0.1) -> Optional[np.ndarray]:
+    """仅使用 FFMPEG 后端，避免 CAP_ANY 将纯数字文件名误判为图片序列。"""
+    abs_video_path = os.path.abspath(video_path)
+    cap = cv2.VideoCapture(abs_video_path, cv2.CAP_FFMPEG)
+    if not cap.isOpened():
+        cap.release()
+        return None
+    try:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames <= 0:
+            ret, frame = cap.read()
+            return frame if ret and frame is not None else None
+        target_frame = max(1, int(total_frames * frame_position))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+        ret, frame = cap.read()
+        return frame if ret and frame is not None else None
+    finally:
+        cap.release()
+
+
 def extract_thumbnail_from_video(video_path, output_path=None, frame_position=0.1):
     """从视频文件中抽取一帧作为封面
     
@@ -1262,109 +1487,36 @@ def extract_thumbnail_from_video(video_path, output_path=None, frame_position=0.
         如果output_path为None，返回图像数据（numpy array），否则返回True/False
     """
     try:
-        # 检查文件是否存在
         if not os.path.exists(video_path):
             logger.error(f"视频文件不存在: {video_path}")
             return None if output_path is None else False
-        
-        # 检查文件是否可读
+
         if not os.access(video_path, os.R_OK):
             logger.error(f"视频文件不可读: {video_path}")
             return None if output_path is None else False
-        
-        # 确保文件已完全写入（等待文件大小稳定）
-        max_wait_attempts = 5
-        wait_interval = 0.3
-        for attempt in range(max_wait_attempts):
-            try:
-                size1 = os.path.getsize(video_path)
-                time.sleep(wait_interval)
-                size2 = os.path.getsize(video_path)
-                if size1 == size2 and size1 > 0:
-                    break
-            except OSError:
-                pass
-            if attempt == max_wait_attempts - 1:
-                logger.warning(f"视频文件可能仍在写入中: {video_path}")
-        
-        # 将路径转换为绝对路径
+
+        file_size = os.path.getsize(video_path)
+        min_bytes = _srs_dvr_min_file_bytes()
+        if file_size < min_bytes:
+            logger.warning(
+                f"视频文件过小，无法抽封面: {video_path}, size={file_size} bytes, min={min_bytes}"
+            )
+            return None if output_path is None else False
+
         abs_video_path = os.path.abspath(video_path)
-        
-        # 尝试多种方式打开视频文件
-        cap = None
-        backends_to_try = [
-            (cv2.CAP_FFMPEG, "FFMPEG"),
-            (cv2.CAP_ANY, "ANY"),  # 自动选择后端
-        ]
-        
-        for backend, backend_name in backends_to_try:
-            try:
-                if backend == cv2.CAP_FFMPEG:
-                    # 对于FFMPEG，使用文件路径字符串
-                    cap = cv2.VideoCapture(abs_video_path, backend)
-                else:
-                    # 对于其他后端，直接使用路径
-                    cap = cv2.VideoCapture(abs_video_path, backend)
-                
-                if cap and cap.isOpened():
-                    # 尝试读取一帧来验证文件是否真的可读
-                    test_ret, _ = cap.read()
-                    if test_ret:
-                        # 重置到开头
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        logger.debug(f"成功使用{backend_name}后端打开视频: {abs_video_path}")
-                        break
-                    else:
-                        cap.release()
-                        cap = None
-            except Exception as e:
-                if cap:
-                    cap.release()
-                cap = None
-                logger.debug(f"使用{backend_name}后端打开视频失败: {abs_video_path}, error={str(e)}")
-        
-        if not cap or not cap.isOpened():
-            logger.error(f"无法打开视频文件（已尝试多种后端）: {abs_video_path}")
+        frame = _extract_thumbnail_ffmpeg(abs_video_path, frame_position)
+        if frame is None:
+            frame = _extract_thumbnail_opencv(abs_video_path, frame_position)
+
+        if frame is None:
+            logger.error(f"无法从视频中读取帧: {abs_video_path}, size={file_size}")
             return None if output_path is None else False
-        
-        # 获取视频总帧数
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total_frames == 0:
-            # 如果无法获取总帧数，尝试读取第一帧
-            ret, frame = cap.read()
-            cap.release()
-            if not ret or frame is None:
-                logger.error(f"无法从视频中读取帧: {video_path}")
-                return None if output_path is None else False
-            
-            if output_path:
-                cv2.imwrite(output_path, frame)
-                return True
-            else:
-                return frame
-        
-        # 计算要抽取的帧位置
-        target_frame = int(total_frames * frame_position)
-        if target_frame < 1:
-            target_frame = 1
-        
-        # 设置帧位置
-        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-        
-        # 读取帧
-        ret, frame = cap.read()
-        cap.release()
-        
-        if not ret or frame is None:
-            logger.error(f"无法从视频中读取帧: {video_path}, target_frame={target_frame}")
-            return None if output_path is None else False
-        
+
         if output_path:
             cv2.imwrite(output_path, frame)
             return True
-        else:
-            return frame
-            
+        return frame
+
     except Exception as e:
         logger.error(f"抽取视频封面失败: {video_path}, error={str(e)}", exc_info=True)
         return None if output_path is None else False
@@ -1609,34 +1761,20 @@ def on_dvr_callback():
 
         logger.debug(f"on_dvr回调：处理后的文件路径 absolute_file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}")
         
-        # 等待文件创建完成（SRS可能在回调时文件还在写入中）
-        max_retries = 10
-        retry_interval = 0.5  # 每次等待0.5秒
-        file_size = 0
-        
-        for attempt in range(max_retries):
-            if os.path.exists(absolute_file_path):
-                # 检查文件大小是否稳定（文件可能还在写入中）
-                try:
-                    size1 = os.path.getsize(absolute_file_path)
-                    time.sleep(0.2)  # 等待0.2秒
-                    size2 = os.path.getsize(absolute_file_path)
-                    if size1 == size2 and size1 > 0:
-                        # 文件大小稳定且不为0，说明文件已创建完成
-                        file_size = size1
-                        logger.debug(f"on_dvr回调：文件已就绪 file_path={absolute_file_path}, size={file_size} bytes, attempts={attempt + 1}")
-                        break
-                except OSError as e:
-                    # 文件可能还在创建中，继续等待
-                    logger.debug(f"on_dvr回调：文件可能还在创建中 attempt={attempt + 1}, error={str(e)}")
-                    pass
-            
-            if attempt < max_retries - 1:
-                time.sleep(retry_interval)
-        else:
-            # 仅在用尽 max_retries 次轮询仍未就绪时打 WARNING（中途成功则 break，不会进入此处）
-            logger.warning(f"on_dvr回调：录像文件不存在或仍在写入中 file_path={absolute_file_path}, cwd={cwd}, original_file={file_path}, max_retries={max_retries}")
+        # 等待文件创建完成（SRS on_dvr 可能早于落盘结束；过小文件多为空 FLV 头）
+        file_size = _wait_dvr_file_stable(absolute_file_path, max_retries=20, retry_interval=0.5)
+        if file_size <= 0:
+            try:
+                partial = os.path.getsize(absolute_file_path) if os.path.exists(absolute_file_path) else 0
+            except OSError:
+                partial = 0
+            logger.warning(
+                f"on_dvr回调：录像无效或仍在写入 "
+                f"file_path={absolute_file_path}, size={partial} bytes, "
+                f"min_required={_srs_dvr_min_file_bytes()}, original_file={file_path}"
+            )
             return jsonify({'code': 0, 'msg': None})
+        logger.debug(f"on_dvr回调：文件已就绪 file_path={absolute_file_path}, size={file_size} bytes")
         
         # 从文件路径提取日期：playbacks/<直播或AI等 app>/<stream>/YYYY/MM/DD/文件名
         parsed_date_dir, parsed_record_time = _parse_srs_dvr_path_date(absolute_file_path)
@@ -1705,9 +1843,7 @@ def on_dvr_callback():
             # 抽取视频封面
             thumbnail_path = None
             try:
-                # 在抽取封面之前，再次确保文件已完全写入（FLV文件可能需要更多时间）
-                time.sleep(0.5)  # 额外等待0.5秒，确保文件完全写入
-                logger.debug(f"on_dvr回调：开始抽取视频封面 video_path={absolute_file_path}")
+                logger.debug(f"on_dvr回调：开始抽取视频封面 video_path={absolute_file_path}, size={file_size}")
                 frame = extract_thumbnail_from_video(absolute_file_path, output_path=None, frame_position=0.1)
                 
                 if frame is not None:
@@ -1752,17 +1888,7 @@ def on_dvr_callback():
             # 创建或更新Playback记录
             try:
                 # 计算视频时长（秒），如果无法获取则使用默认值
-                duration = 0
-                try:
-                    cap = cv2.VideoCapture(absolute_file_path)
-                    if cap.isOpened():
-                        fps = cap.get(cv2.CAP_PROP_FPS)
-                        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                        if fps > 0 and frame_count > 0:
-                            duration = int(frame_count / fps)
-                        cap.release()
-                except:
-                    pass
+                duration = int(_ffprobe_video_duration_seconds(absolute_file_path))
                 
                 # 确定录制时间（如果之前没有设置，使用文件修改时间）
                 if 'record_time' not in locals():
@@ -1857,6 +1983,9 @@ def on_dvr_callback():
 def list_directories():
     """查询目录列表（树形结构）"""
     try:
+        from app.services.gb28181_sync_service import ensure_directory_devices_synced
+        ensure_directory_devices_synced()
+
         def build_tree(parent_id=None):
             """递归构建目录树"""
             directories = DeviceDirectory.query.filter_by(parent_id=parent_id).order_by(DeviceDirectory.sort_order, DeviceDirectory.id).all()
@@ -1868,6 +1997,7 @@ def list_directories():
                     'parent_id': directory.parent_id,
                     'description': directory.description,
                     'sort_order': directory.sort_order,
+                    'is_default': camera_service.is_default_directory(directory),
                     'device_count': Device.query.filter_by(directory_id=directory.id).count(),
                     'created_at': directory.created_at.isoformat() if directory.created_at else None,
                     'updated_at': directory.updated_at.isoformat() if directory.updated_at else None,
@@ -1887,6 +2017,144 @@ def list_directories():
         return jsonify({'code': 500, 'msg': f'查询目录列表失败: {str(e)}'}), 500
 
 
+def _device_monitor_tree_node(device):
+    """分屏监控树中的设备节点（仅含播放与展示所需字段）。"""
+    d = _to_dict(device)
+    source = (d.get('source') or '').strip()
+    is_gb28181 = source.lower().startswith('gb28181://')
+    return {
+        'type': 'device',
+        'id': d['id'],
+        'name': d.get('name') or d['id'],
+        'http_stream': d.get('http_stream'),
+        'rtmp_stream': d.get('rtmp_stream'),
+        'ai_http_stream': d.get('ai_http_stream'),
+        'ai_rtmp_stream': d.get('ai_rtmp_stream'),
+        'online': d.get('online'),
+        'directory_id': d.get('directory_id'),
+        'device_kind': 'gb28181' if is_gb28181 else 'direct',
+        'source': source or None,
+    }
+
+
+@camera_bp.route('/directory/monitor-tree', methods=['GET'])
+def get_directory_monitor_tree():
+    """分屏监控用目录设备树：目录嵌套 + 各目录下设备（未分组设备已归入默认分组）。"""
+    try:
+        from app.services.gb28181_sync_service import ensure_directory_devices_synced
+        ensure_directory_devices_synced()
+
+        def build_tree(parent_id=None):
+            directories = DeviceDirectory.query.filter_by(parent_id=parent_id).order_by(
+                DeviceDirectory.sort_order, DeviceDirectory.id
+            ).all()
+            result = []
+            for directory in directories:
+                devices = Device.query.filter_by(directory_id=directory.id).order_by(
+                    Device.updated_at.desc()
+                ).all()
+                for device in devices:
+                    try:
+                        camera_service.ensure_device_spaces(device.id)
+                    except Exception as e:
+                        logger.warning(f'检查设备 {device.id} 空间时出错: {str(e)}')
+                result.append({
+                    'type': 'directory',
+                    'id': directory.id,
+                    'name': directory.name,
+                    'parent_id': directory.parent_id,
+                    'sort_order': directory.sort_order,
+                    'is_default': camera_service.is_default_directory(directory),
+                    'device_count': len(devices),
+                    'children': build_tree(directory.id),
+                    'devices': [_device_monitor_tree_node(d) for d in devices],
+                })
+            return result
+
+        tree = build_tree()
+
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': {
+                'tree': tree,
+                'unassigned_devices': [],
+            },
+        })
+    except Exception as e:
+        logger.error(f'获取分屏监控树失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'获取分屏监控树失败: {str(e)}'}), 500
+
+
+@camera_bp.route('/directory/validate-json', methods=['POST'])
+def validate_directory_json():
+    """校验设备目录 JSON（结构、禁止默认分组、摄像头不重复）。"""
+    try:
+        from app.services.directory_json_sync_service import (
+            DirectoryJsonError,
+            parse_directory_json_payload,
+            validate_directory_json_tree,
+        )
+
+        data = request.get_json()
+        if data is None:
+            return jsonify({'code': 400, 'msg': '请求数据不能为空'}), 400
+        tree = parse_directory_json_payload(data)
+        validate_directory_json_tree(tree)
+        return jsonify({'code': 0, 'msg': '校验通过'})
+    except DirectoryJsonError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'校验目录 JSON 失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'校验目录 JSON 失败: {str(e)}'}), 500
+
+
+@camera_bp.route('/directory/sync-json', methods=['POST'])
+def sync_directory_json():
+    """按 JSON 同步设备目录（服务端校验摄像头不重复后写入）。"""
+    try:
+        from app.services.directory_json_sync_service import (
+            DirectoryJsonError,
+            parse_directory_json_payload,
+            sync_directory_from_json,
+        )
+
+        data = request.get_json()
+        if data is None:
+            return jsonify({'code': 400, 'msg': '请求数据不能为空'}), 400
+        tree = parse_directory_json_payload(data)
+        sync_directory_from_json(tree)
+        return jsonify({'code': 0, 'msg': '目录同步成功'})
+    except DirectoryJsonError as e:
+        db.session.rollback()
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'同步目录 JSON 失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'同步目录 JSON 失败: {str(e)}'}), 500
+
+
+@camera_bp.route('/directory/sync-gb28181', methods=['POST'])
+def sync_gb28181_directory_devices():
+    """手动从 WVP 同步国标通道到 device 表（默认分组）。"""
+    try:
+        from app.services.gb28181_sync_service import sync_gb28181_channels_to_devices
+
+        created = sync_gb28181_channels_to_devices()
+        total_gb = Device.query.filter(Device.source.ilike('gb28181://%')).count()
+        return jsonify({
+            'code': 0,
+            'msg': '国标设备同步成功',
+            'data': {
+                'created': created,
+                'total_gb_devices': total_gb,
+            },
+        })
+    except Exception as e:
+        logger.error(f'同步国标设备失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'同步国标设备失败: {str(e)}'}), 500
+
+
 @camera_bp.route('/directory', methods=['POST'])
 def create_directory():
     """创建目录"""
@@ -1898,8 +2166,11 @@ def create_directory():
         name = data.get('name', '').strip()
         if not name:
             return jsonify({'code': 400, 'msg': '目录名称不能为空'}), 400
-        
+
         parent_id = data.get('parent_id')
+        if name == camera_service.DEFAULT_DIRECTORY_NAME and not parent_id:
+            return jsonify({'code': 400, 'msg': '「默认分组」为系统保留名称，请使用其他目录名'}), 400
+        
         if parent_id:
             # 验证父目录是否存在
             parent = DeviceDirectory.query.get(parent_id)
@@ -1945,6 +2216,12 @@ def update_directory(directory_id):
         data = request.get_json()
         if not data:
             return jsonify({'code': 400, 'msg': '请求数据不能为空'}), 400
+
+        if camera_service.is_default_directory(directory):
+            if 'name' in data and data.get('name', '').strip() != directory.name:
+                return jsonify({'code': 400, 'msg': '默认分组不可重命名'}), 400
+            if 'parent_id' in data and data.get('parent_id') != directory.parent_id:
+                return jsonify({'code': 400, 'msg': '默认分组不可移动'}), 400
         
         if 'name' in data:
             name = data.get('name', '').strip()
@@ -2005,6 +2282,9 @@ def delete_directory(directory_id):
         directory = DeviceDirectory.query.get(directory_id)
         if not directory:
             return jsonify({'code': 400, 'msg': f'目录不存在: ID={directory_id}'}), 400
+
+        if camera_service.is_default_directory(directory):
+            return jsonify({'code': 400, 'msg': '默认分组不可删除'}), 400
         
         # 检查是否有子目录
         children_count = DeviceDirectory.query.filter_by(parent_id=directory_id).count()
@@ -2112,9 +2392,9 @@ def move_device_to_directory(device_id):
         
         directory_id = data.get('directory_id')
         
-        # 如果directory_id为None、null或0，表示解除关联（移动到根目录）
+        # 如果directory_id为None、null或0，移回默认分组
         if directory_id is None or directory_id == 0:
-            device.directory_id = None
+            device.directory_id = camera_service.get_or_create_default_directory().id
         else:
             # 验证目录是否存在
             directory = DeviceDirectory.query.get(directory_id)

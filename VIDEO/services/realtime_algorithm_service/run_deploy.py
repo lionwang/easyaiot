@@ -39,6 +39,7 @@ sys.path.insert(0, video_root)
 # 导入VIDEO模块的模型
 from models import db, AlgorithmTask, Device
 from app.utils.gb28181_source import resolve_gb28181_source
+from app.services.camera_service import resolve_device_ai_rtmp_stream
 from app.utils.alert_images_paths import resolve_alert_images_root
 from app.utils.async_video_stream import AsyncVideoStream, async_rtsp_read_enabled
 
@@ -222,7 +223,7 @@ _OPENCV_FFMPEG_OPTIONS_CUSTOM = bool(os.getenv("OPENCV_FFMPEG_CAPTURE_OPTIONS"))
 if not _OPENCV_FFMPEG_OPTIONS_CUSTOM:
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
         f"rtsp_transport;{_EFFECTIVE_RTSP_TRANSPORT}"
-        "|stimeout;10000000"
+        "|timeout;10000000"
         "|rw_timeout;5000000"
         "|max_delay;500000"
         "|fflags;nobuffer+discardcorrupt+genpts"
@@ -926,8 +927,8 @@ def load_task_config():
                 if not rtsp_url:
                     logger.warning(f"设备 {device.id} 未获取到可用输入流地址，跳过该设备")
                     continue
-                # AI RTMP流地址作为输出（从device.ai_rtmp_stream获取，如果不存在则回退到device.rtmp_stream）
-                rtmp_url = device.ai_rtmp_stream if device.ai_rtmp_stream else (device.rtmp_stream if device.rtmp_stream else None)
+                # AI RTMP 输出流（国标设备同步时可能仅留空 live 地址，此处含按 device_id 生成的兜底）
+                rtmp_url = resolve_device_ai_rtmp_stream(device)
                 device_streams[device.id] = {
                     'rtsp_url': rtsp_url,  # 输入流地址
                     'rtmp_url': rtmp_url,  # AI输出流地址

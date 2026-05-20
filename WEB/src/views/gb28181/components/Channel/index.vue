@@ -47,7 +47,7 @@
       </template>
     </BasicTable>
     <div v-else>
-      <ChannelCardList :params="params" :api="queryChannelList"
+      <ChannelCardList :params="channelListParams" :api="queryChannelList"
                        @get-method="getMethod" @delete="handleDel" @edit="handleEdit"
                        @play="handlePlay" @device-record="handleDeviceRecord" @snapshot="handleSnapshot" @cloud-record="handleCloudRecord">
         <template #header>
@@ -63,7 +63,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import {reactive, ref} from 'vue';
+import {computed, reactive, ref, watch} from 'vue';
 import {BasicTable, TableAction, useTable} from "@/components/Table";
 import {PopConfirmButton} from "@/components/Button";
 import moment from "moment/moment";
@@ -76,13 +76,25 @@ import ChannelModal from "@/views/gb28181/components/ChannelModal/index.vue";
 import {batchDeleteGbChannels, deleteGbChannel, queryChannelList, snapshot} from "@/api/device/gb28181";
 import DialogPlayer from "@/components/VideoPlayer/DialogPlayer.vue";
 import {downloadByA} from "@/utils";
+import { resolveGbChannelPlayIds } from '@/views/camera/utils/gb28181Channel';
 
 
 defineOptions({name: 'Channel'})
 
+const props = defineProps<{
+  /** 嵌入设备列表详情页时传入 SIP 设备编码 */
+  deviceIdentification?: string;
+  embedded?: boolean;
+}>();
+
 const checkedKeys = ref<Array<string | number>>([]);
 const {createMessage} = useMessage();
-const route = useRoute()
+const route = useRoute();
+
+const sipDeviceId = computed(
+  () =>
+    (props.deviceIdentification || route.params.deviceIdentification || '') as string,
+);
 
 const [registerAddModel, {openModal: openAddModal}] = useModal();
 const [registerPlayerAddModel, {openModal: openPlayerAddModal}] = useModal();
@@ -124,7 +136,7 @@ const [
       page,
       pageSize,
       sortOrder: order == 'descend' ? 'DESC' : 'ASC',
-      deviceIdentification: route.params.deviceIdentification,
+      deviceIdentification: sipDeviceId.value,
     };
     return params;
   },
@@ -233,13 +245,23 @@ function onChange() {
   //console.log('onChange', arguments);
 }
 
-// 请求api时附带参数
-const params = {
-  deviceIdentification: route.params.deviceIdentification,
-};
+/** 卡片列表请求参数（嵌入设备列表时必须用 props，不能依赖路由） */
+const channelListParams = computed(() => ({
+  deviceIdentification: sipDeviceId.value,
+  deviceId: sipDeviceId.value,
+}));
 
 let cardListReload = () => {
 };
+
+watch(
+  sipDeviceId,
+  (id) => {
+    if (!id) return;
+    reload({ page: 0 });
+    cardListReload();
+  },
+);
 
 // 获取内部fetch方法;
 function getMethod(m: any) {
@@ -254,9 +276,18 @@ function handleEdit(record) {
 
 //播放按钮事件：设备号优先用路由（当前为某设备下的通道列表）；通道号用 channelId 或 deviceId
 function handlePlay(record) {
-  const deviceId = route.params.deviceIdentification ?? record.deviceId
-  const channelId = record.channelId ?? record.deviceId
-  openPlayerAddModal(true, { ...record, deviceId, channelId })
+  const ids = resolveGbChannelPlayIds(record, sipDeviceId.value);
+  if (!ids) {
+    createMessage.warning('无法解析通道编码，请检查 WVP 通道数据');
+    return;
+  }
+  openPlayerAddModal(true, {
+    ...record,
+    deviceIdentification: ids.sipDeviceId,
+    deviceId: ids.sipDeviceId,
+    channelId: ids.channelId,
+    http_stream: undefined,
+  });
 }
 
 const router = useRouter();

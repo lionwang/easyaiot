@@ -883,6 +883,12 @@ def start_algorithm_task(task_id: int):
         task.exception_reason = None
         task.updated_at = datetime.utcnow()
         db.session.commit()
+
+        try:
+            from app.services.gb28181_sync_service import backfill_gb28181_ai_stream_urls
+            backfill_gb28181_ai_stream_urls()
+        except Exception as e:
+            logger.warning(f'启动任务前回填国标 AI 推流地址失败: {e}')
         
         # 启动任务相关的服务（抽帧器、推送器、排序器）
         service_message = "启动成功"
@@ -942,6 +948,12 @@ def restart_algorithm_task(task_id: int):
         task.exception_reason = None
         task.updated_at = datetime.utcnow()
         db.session.commit()
+
+        try:
+            from app.services.gb28181_sync_service import backfill_gb28181_ai_stream_urls
+            backfill_gb28181_ai_stream_urls()
+        except Exception as e:
+            logger.warning(f'重启任务前回填国标 AI 推流地址失败: {e}')
         
         # 尝试使用守护进程的 restart 方法（如果守护进程在运行）
         try:
