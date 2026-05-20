@@ -14,6 +14,10 @@ AI/services/auto-labeling/static/annotations/** -diff
 # dify 数据目录：不参与 diff
 .scripts/docker/dify_data/** -diff
 
+# milvus 数据与配置目录：不参与 diff
+.scripts/docker/milvus_config/** -diff
+.scripts/docker/milvus_data/** -diff
+
 # ZLMediaKit 运行时配置：不参与 diff
 .scripts/zlmediakit/conf/config.ini -diff
 
