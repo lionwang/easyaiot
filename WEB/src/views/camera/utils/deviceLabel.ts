@@ -98,7 +98,8 @@ export function isNvrChannelDevice(
   if (device.device_kind === 'nvr_channel') return true;
   if (device.nvr_id && device.nvr_id > 0) return true;
   if (!isNvrRtspSource(device.source)) return false;
-  if (!nvrs?.length) return true;
+  // 未提供 NVR 列表时不能仅凭 RTSP 路径推断（单机 IPC 与海康/大华 NVR 通道 URL 相同）
+  if (!nvrs?.length) return false;
   const host = (device.source || '').trim().match(/^rtsp:\/\/(?:[^@/]+@)?([^/:]+)/i)?.[1];
   if (!host) return false;
   return nvrs.some((n) => (n.ip || '').trim() === host);

@@ -17,8 +17,12 @@ export interface NvrCardItem {
 }
 
 /** 未挂载到 NVR 的直连设备（顶层卡片/表格行） */
-export function filterStandaloneDirectDevices(devices: DeviceInfo[]): DeviceInfo[] {
-  return devices.filter((d) => !isNvrChannelDevice(d) && !isNvrListRow(d));
+export function filterStandaloneDirectDevices(
+  devices: DeviceInfo[],
+  nvrs?: NvrInfo[],
+): DeviceInfo[] {
+  const nvrBrief = nvrs?.map((n) => ({ id: n.id, ip: n.ip }));
+  return devices.filter((d) => !isNvrChannelDevice(d, nvrBrief) && !isNvrListRow(d));
 }
 
 export function nvrToCardItem(nvr: NvrInfo): NvrCardItem {
@@ -119,7 +123,7 @@ export function buildCardRowsWithNvr(
   nvrs: NvrInfo[],
   gbItems: DeviceListDisplayItem[] = [],
 ): DeviceListDisplayItem[] {
-  const items: DeviceListDisplayItem[] = filterStandaloneDirectDevices(devices).map((device) => ({
+  const items: DeviceListDisplayItem[] = filterStandaloneDirectDevices(devices, nvrs).map((device) => ({
     kind: 'direct' as const,
     device,
   }));

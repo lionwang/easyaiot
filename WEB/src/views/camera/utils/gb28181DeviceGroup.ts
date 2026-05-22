@@ -114,6 +114,7 @@ export async function fetchMergedDeviceList(params: Record<string, any> = {}) {
   const allDevices = devRes?.data ?? [];
   const direct = filterStandaloneDirectDevices(
     allDevices.filter((d) => !isGb28181ChannelRecord(d) && !isGb28181SipListRow(d)),
+    nvrs,
   );
   const gbRows = (gbRes?.data ?? []).map((wvp) => wvpDeviceToTableRow(wvp));
   const nvrRows = nvrs.map((n) => nvrToTableRow(n));
