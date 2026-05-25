@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
-# 第一阶段：在 Maven 容器中编译整个 DEVICE 项目（仅执行一次）
-# Maven 依赖缓存到宿主机 .build-cache/m2/repository（bind mount）
-# 编译产物由 install_linux.sh 提取到 ./target/jars，供各模块运行时 Dockerfile 使用
+# 第一阶段：Maven 只执行一次 package（勿拆成 go-offline + clean package，否则会编译两遍）
+# 依赖缓存：宿主机 .build-cache/m2/repository（bind mount）
+# 产物：install_linux.sh 提取到 ./target/jars
 
 FROM maven:3.9.11-eclipse-temurin-21-alpine AS builder
 
@@ -13,10 +13,10 @@ RUN mkdir -p /m2/repository && \
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
   <mirrors>
     <mirror>
-      <id>aliyun</id>
-      <mirrorOf>central</mirrorOf>
+      <id>aliyun-all</id>
+      <mirrorOf>central,huaweicloud,aliyunmaven,aliyun-plugin</mirrorOf>
       <name>Aliyun Maven</name>
-      <url>https://maven.aliyun.com/nexus/content/groups/public/</url>
+      <url>https://maven.aliyun.com/repository/public</url>
     </mirror>
   </mirrors>
   <localRepository>/m2/repository</localRepository>
@@ -45,12 +45,10 @@ COPY iot-gb28181/pom.xml ./iot-gb28181/
 
 COPY . .
 
+# 单次 package：复用宿主机 m2；不用 clean（避免删掉同一次构建里已编译的 target）
 RUN --mount=type=bind,source=.build-cache/m2/repository,target=/m2/repository \
-    mvn process-resources -B -Drevision=1.0.0 && \
-    (mvn dependency:go-offline -B -Drevision=1.0.0 || echo "dependency:go-offline 部分模块跳过，继续打包")
-
-RUN --mount=type=bind,source=.build-cache/m2/repository,target=/m2/repository \
-    mvn clean package -DskipTests \
+    mvn -B package \
+    -DskipTests \
     -Dmaven.test.skip=true \
     -Dcheckstyle.skip=true \
     -Drevision=1.0.0
