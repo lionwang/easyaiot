@@ -50,7 +50,7 @@ public interface RegionMapper {
             " where device_id in " +
             " <foreach collection='codes'  item='item'  open='(' separator=',' close=')' > #{item}</foreach>" +
             " </script>")
-    List<String> queryInList(Set<String> codes);
+    List<String> queryInList(@Param("codes") Set<String> codes);
 
 
     @Insert(" <script>" +
@@ -67,7 +67,7 @@ public interface RegionMapper {
             " </foreach> " +
             " </script>")
     @Options(useGeneratedKeys = true, keyProperty = "id", keyColumn = "id")
-    int batchAdd(List<Region> regionList);
+    int batchAdd(@Param("regionList") List<Region> regionList);
 
     @Select(" <script>" +
             " SELECT " +
@@ -87,14 +87,14 @@ public interface RegionMapper {
             " DELETE FROM wvp_common_region WHERE id in " +
             " <foreach collection='allChildren'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>")
-    void batchDelete(List<Region> allChildren);
+    void batchDelete(@Param("allChildren") List<Region> allChildren);
 
     @Select(" <script>" +
             " SELECT * from wvp_common_region " +
             " where device_id in " +
             " <foreach collection='regionList'  item='item'  open='(' separator=',' close=')' > #{item.deviceId}</foreach>" +
             " </script>")
-    List<Region> queryInRegionListByDeviceId(List<Region> regionList);
+    List<Region> queryInRegionListByDeviceId(@Param("regionList") List<Region> regionList);
 
     @Select(" <script>" +
             " SELECT " +
@@ -137,7 +137,7 @@ public interface RegionMapper {
             "  and w1.id in " +
             " <foreach collection='regionListForAdd'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>", databaseId = "postgresql")
-    void updateParentId(List<Region> regionListForAdd);
+    void updateParentId(@Param("regionListForAdd") List<Region> regionListForAdd);
 
     @Update(" <script>" +
             " update wvp_common_region" +
@@ -156,7 +156,7 @@ public interface RegionMapper {
             " where id in " +
             " <foreach collection='regionSet'  item='item'  open='(' separator=',' close=')' > #{item.parentId}</foreach>" +
             " </script>")
-    Set<Region> queryParentInChannelList(Set<Region> regionSet);
+    Set<Region> queryParentInChannelList(@Param("regionSet") Set<Region> regionSet);
 
     @Select(" <script>" +
             " SELECT " +
@@ -166,7 +166,7 @@ public interface RegionMapper {
             " <foreach collection='channelList'  item='item'  open='(' separator=',' close=')' > #{item.gbCivilCode}</foreach>" +
             " order by id " +
             "</script>")
-    Set<Region> queryByChannelList(List<CommonGBChannel> channelList);
+    Set<Region> queryByChannelList(@Param("channelList") List<CommonGBChannel> channelList);
 
     @Select(" <script>" +
             " SELECT * " +
@@ -184,7 +184,7 @@ public interface RegionMapper {
             " where wpr.platform_id IS NULL and wcr.id in " +
             " <foreach collection='allRegion'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>")
-    Set<Region> queryNotShareRegionForPlatformByRegionList(Set<Region> allRegion, @Param("platformId") Integer platformId);
+    Set<Region> queryNotShareRegionForPlatformByRegionList(@Param("allRegion") Set<Region> allRegion, @Param("platformId") Integer platformId);
 
 
     @Select(" <script>" +
@@ -193,5 +193,5 @@ public interface RegionMapper {
             " where device_id in " +
             " <foreach collection='civilCodePoList'  item='item'  open='(' separator=',' close=')' > #{item.code}</foreach>" +
             " </script>")
-    Set<String> queryInCivilCodePoList(List<CivilCodePo> civilCodePoList);
+    Set<String> queryInCivilCodePoList(@Param("civilCodePoList") List<CivilCodePo> civilCodePoList);
 }

@@ -68,7 +68,7 @@ public interface GroupMapper {
             " </foreach> " +
             " </script>")
     @Options(useGeneratedKeys = true, keyProperty = "id", keyColumn = "id")
-    int batchAdd(List<Group> groupList);
+    int batchAdd(@Param("groupList") List<Group> groupList);
 
     @Select(" <script>" +
             " SELECT " +
@@ -118,7 +118,7 @@ public interface GroupMapper {
             " DELETE FROM wvp_common_group WHERE id in " +
             " <foreach collection='allChildren'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>")
-    int batchDelete(List<Group> allChildren);
+    int batchDelete(@Param("allChildren") List<Group> allChildren);
 
     @Select("SELECT * from wvp_common_group WHERE device_id = #{businessGroup} and business_group = #{businessGroup} ")
     Group queryBusinessGroup(@Param("businessGroup") String businessGroup);
@@ -143,7 +143,7 @@ public interface GroupMapper {
             " where device_id in " +
             " <foreach collection='groupList'  item='item'  open='(' separator=',' close=')' > #{item.deviceId}</foreach>" +
             " </script>")
-    List<Group> queryInGroupListByDeviceId(List<Group> groupList);
+    List<Group> queryInGroupListByDeviceId(@Param("groupList") List<Group> groupList);
 
     @Select(" <script>" +
             " SELECT " +
@@ -152,7 +152,7 @@ public interface GroupMapper {
             " where (device_id, business_group) in " +
             " <foreach collection='channelList'  item='item'  open='(' separator=',' close=')' > (#{item.gbParentId}, #{item.gbBusinessGroupId})</foreach>" +
             " </script>")
-    Set<Group> queryInChannelList(List<CommonGBChannel> channelList);
+    Set<Group> queryInChannelList(@Param("channelList") List<CommonGBChannel> channelList);
 
     @Select(" <script>" +
             " SELECT " +
@@ -161,7 +161,7 @@ public interface GroupMapper {
             " where id in " +
             " <foreach collection='groupSet'  item='item'  open='(' separator=',' close=')' > #{item.parentId}</foreach>" +
             " </script>")
-    Set<Group> queryParentInChannelList(Set<Group> groupSet);
+    Set<Group> queryParentInChannelList(@Param("groupSet") Set<Group> groupSet);
 
     @Select(" <script>" +
             " SELECT " +
@@ -184,7 +184,7 @@ public interface GroupMapper {
             " where wpg.platform_id is null and wcg.device_id in " +
             " <foreach collection='channelList'  item='item'  open='(' separator=',' close=')' > #{item.gbParentId}</foreach>" +
             " </script>")
-    Set<Group> queryNotShareGroupForPlatformByChannelList(List<CommonGBChannel> channelList, @Param("platformId") Integer platformId);
+    Set<Group> queryNotShareGroupForPlatformByChannelList(@Param("channelList") List<CommonGBChannel> channelList, @Param("platformId") Integer platformId);
 
     @Select(" <script>" +
             " SELECT * " +
@@ -193,7 +193,7 @@ public interface GroupMapper {
             " where wpg.platform_id IS NULL and wcg.id in " +
             " <foreach collection='allGroup'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>")
-    Set<Group> queryNotShareGroupForPlatformByGroupList(Set<Group> allGroup, @Param("platformId") Integer platformId);
+    Set<Group> queryNotShareGroupForPlatformByGroupList(@Param("allGroup") Set<Group> allGroup, @Param("platformId") Integer platformId);
 
 
     @Select(" <script>" +
@@ -204,7 +204,7 @@ public interface GroupMapper {
             " <foreach collection='channelList'  item='item'  open='(' separator=',' close=')' > #{item.gbParentId}</foreach>" +
             " order by id " +
             "</script>")
-    Set<Group> queryByChannelList(List<CommonGBChannel> channelList);
+    Set<Group> queryByChannelList(@Param("channelList") List<CommonGBChannel> channelList);
 
     @Update(value = " <script>" +
             " update wvp_common_group w1 " +
@@ -236,7 +236,7 @@ public interface GroupMapper {
             "  and w1.id in " +
             " <foreach collection='groupListForAdd'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>", databaseId = "kingbase")
-    void updateParentId(List<Group> groupListForAdd);
+    void updateParentId(@Param("groupListForAdd") List<Group> groupListForAdd);
 
     @Update(value = " <script>" +
             " update wvp_common_group w1 " +
@@ -286,7 +286,7 @@ public interface GroupMapper {
             "       and w1.id in " +
             " <foreach collection='groupListForAdd'  item='item'  open='(' separator=',' close=')' > #{item.id}</foreach>" +
             " </script>", databaseId = "postgresql")
-    void updateParentIdWithBusinessGroup(List<Group> groupListForAdd);
+    void updateParentIdWithBusinessGroup(@Param("groupListForAdd") List<Group> groupListForAdd);
 
     @Select(" <script>" +
             " SELECT " +
@@ -319,7 +319,7 @@ public interface GroupMapper {
             " <foreach collection='groupList'  item='item'  open='(' separator=',' close=')' > #{item.deviceId}</foreach>" +
             " GROUP BY coalesce(wdc.gb_parent_id, wdc.parent_id)" +
             "</script>")
-    List<CameraCount> queryCountWithChild(List<CameraGroup> groupList);
+    List<CameraCount> queryCountWithChild(@Param("groupList") List<CameraGroup> groupList);
 
     @Select("SELECT * from wvp_common_group where alias is not null")
     @MapKey("alias")
