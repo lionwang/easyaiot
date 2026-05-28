@@ -1,0 +1,318 @@
+"""
+SRS 本地回放录像磁盘守护服务。
+
+防止 /data/playbacks（尤其 live 目录）撑满宿主机磁盘：
+1. MinIO 上传成功后删除本地 .flv（默认开启）
+2. 按设备/全局文件数量上限清理
+3. 按文件年龄清理孤儿录像
+4. 磁盘使用率超阈值时紧急删除最旧文件
+"""
+from __future__ import annotations
+
+import logging
+import os
+import shutil
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+FlvEntry = Tuple[str, float, int]  # path, mtime, size_bytes
+
+
+def _env_bool(name: str, default: bool = True) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        return default
+
+
+def get_srs_record_dir() -> str:
+    return (os.getenv('SRS_RECORD_DIR') or '/data/playbacks').rstrip('/\\')
+
+
+def is_cleanup_enabled() -> bool:
+    return _env_bool('PLAYBACK_CLEANUP_ENABLED', True)
+
+
+def get_disk_usage_percent(path: Optional[str] = None) -> float:
+    """返回 path 所在文件系统的已用空间百分比。"""
+    check_path = path or get_srs_record_dir()
+    try:
+        if not os.path.exists(check_path):
+            parent = os.path.dirname(check_path) or '/'
+            check_path = parent
+        usage = shutil.disk_usage(check_path)
+        if usage.total <= 0:
+            return 0.0
+        return (usage.used / usage.total) * 100.0
+    except OSError as exc:
+        logger.warning('无法获取磁盘使用率 path=%s: %s', check_path, exc)
+        return 0.0
+
+
+def iter_flv_files(root: str, relative_subdir: Optional[str] = None) -> List[FlvEntry]:
+    """递归收集 root 下所有 .flv 文件，按 mtime 升序。"""
+    base = root
+    if relative_subdir:
+        base = os.path.join(root, relative_subdir)
+    if not os.path.isdir(base):
+        return []
+
+    entries: List[FlvEntry] = []
+    for dirpath, _, filenames in os.walk(base):
+        for name in filenames:
+            if not name.lower().endswith('.flv'):
+                continue
+            file_path = os.path.join(dirpath, name)
+            if not os.path.isfile(file_path):
+                continue
+            try:
+                stat = os.stat(file_path)
+                entries.append((file_path, stat.st_mtime, stat.st_size))
+            except OSError as exc:
+                logger.warning('读取录像文件信息失败: %s, %s', file_path, exc)
+    entries.sort(key=lambda item: item[1])
+    return entries
+
+
+def remove_playback_file(file_path: str, reason: str = '') -> bool:
+    if not file_path or not os.path.isfile(file_path):
+        return False
+    try:
+        os.remove(file_path)
+        suffix = f' ({reason})' if reason else ''
+        logger.info('已删除本地回放录像: %s%s', file_path, suffix)
+        _prune_empty_parents(file_path, stop_at=get_srs_record_dir())
+        return True
+    except OSError as exc:
+        logger.warning('删除本地回放录像失败: %s, %s', file_path, exc)
+        return False
+
+
+def _prune_empty_parents(file_path: str, stop_at: str) -> None:
+    """删除文件后向上清理空目录（不超过 stop_at）。"""
+    stop_at = os.path.normpath(stop_at)
+    current = os.path.normpath(os.path.dirname(file_path))
+    while current.startswith(stop_at) and current != stop_at:
+        try:
+            if not os.path.isdir(current):
+                break
+            if os.listdir(current):
+                break
+            os.rmdir(current)
+            current = os.path.dirname(current)
+        except OSError:
+            break
+
+
+def remove_local_after_minio_upload(file_path: str) -> bool:
+    """MinIO 上传成功后删除本地副本。"""
+    if not _env_bool('PLAYBACK_DELETE_AFTER_UPLOAD', True):
+        return False
+    if not is_cleanup_enabled():
+        return False
+    return remove_playback_file(file_path, reason='已上传MinIO')
+
+
+def _delete_oldest_entries(
+    entries: List[FlvEntry],
+    delete_count: int,
+    reason: str,
+) -> Dict[str, int]:
+    deleted = 0
+    freed_bytes = 0
+    for i in range(min(delete_count, len(entries))):
+        path, _, size = entries[i]
+        if remove_playback_file(path, reason=reason):
+            deleted += 1
+            freed_bytes += size
+    return {'deleted': deleted, 'freed_bytes': freed_bytes}
+
+
+def cleanup_device_recordings(
+    device_id: str,
+    max_recordings: Optional[int] = None,
+    keep_ratio: Optional[float] = None,
+) -> Dict[str, int]:
+    """清理单设备 live 目录下超出数量上限的最旧录像。"""
+    if not is_cleanup_enabled():
+        return {'skipped': 1}
+
+    max_recordings = max_recordings if max_recordings is not None else _env_int('PLAYBACK_DEVICE_MAX_FILES', 30)
+    keep_ratio = keep_ratio if keep_ratio is not None else _env_float('PLAYBACK_KEEP_RATIO', 0.2)
+    keep_ratio = min(1.0, max(0.05, keep_ratio))
+
+    record_dir = get_srs_record_dir()
+    device_dir = os.path.join(record_dir, 'live', str(device_id))
+    entries = iter_flv_files(device_dir)
+    total = len(entries)
+    if total <= max_recordings:
+        return {'total': total, 'deleted': 0}
+
+    keep_count = max(1, int(total * keep_ratio))
+    delete_count = total - keep_count
+    result = _delete_oldest_entries(entries, delete_count, reason=f'设备{device_id}数量超限')
+    result['total'] = total
+    if result['deleted'] > 0:
+        logger.info(
+            '设备回放录像数量清理: device_id=%s, 总数=%s, 删除=%s, 保留约=%s',
+            device_id, total, result['deleted'], keep_count,
+        )
+    return result
+
+
+def cleanup_global_recordings(
+    max_recordings: Optional[int] = None,
+    keep_ratio: Optional[float] = None,
+) -> Dict[str, int]:
+    """清理整个 playbacks 目录下超出全局数量上限的最旧录像。"""
+    if not is_cleanup_enabled():
+        return {'skipped': 1}
+
+    max_recordings = max_recordings if max_recordings is not None else _env_int('PLAYBACK_GLOBAL_MAX_FILES', 2000)
+    keep_ratio = keep_ratio if keep_ratio is not None else _env_float('PLAYBACK_KEEP_RATIO', 0.2)
+    keep_ratio = min(1.0, max(0.05, keep_ratio))
+
+    entries = iter_flv_files(get_srs_record_dir())
+    total = len(entries)
+    if total <= max_recordings:
+        return {'total': total, 'deleted': 0}
+
+    keep_count = max(1, int(total * keep_ratio))
+    delete_count = total - keep_count
+    result = _delete_oldest_entries(entries, delete_count, reason='全局数量超限')
+    result['total'] = total
+    if result['deleted'] > 0:
+        logger.info(
+            '全局回放录像数量清理: 总数=%s, 删除=%s, 保留约=%s',
+            total, result['deleted'], keep_count,
+        )
+    return result
+
+
+def cleanup_expired_files(max_age_hours: Optional[int] = None) -> Dict[str, int]:
+    """按文件年龄删除过期本地录像（含上传失败产生的孤儿文件）。"""
+    if not is_cleanup_enabled():
+        return {'skipped': 1}
+
+    max_age_hours = max_age_hours if max_age_hours is not None else _env_int('PLAYBACK_MAX_AGE_HOURS', 48)
+    if max_age_hours <= 0:
+        return {'skipped': 1, 'reason': 'max_age_disabled'}
+
+    cutoff = datetime.now().timestamp() - max_age_hours * 3600
+    entries = iter_flv_files(get_srs_record_dir())
+    expired = [e for e in entries if e[1] < cutoff]
+    if not expired:
+        return {'total': len(entries), 'deleted': 0}
+
+    result = _delete_oldest_entries(expired, len(expired), reason=f'超过{max_age_hours}小时')
+    result['total'] = len(entries)
+    if result['deleted'] > 0:
+        logger.info(
+            '回放录像过期清理: 超过%s小时, 删除=%s, 释放约=%.1fMB',
+            max_age_hours, result['deleted'], result.get('freed_bytes', 0) / (1024 * 1024),
+        )
+    return result
+
+
+def emergency_free_disk(target_percent: Optional[float] = None) -> Dict[str, int]:
+    """磁盘使用率超过紧急阈值时，持续删除最旧录像直至降至目标水位。"""
+    if not is_cleanup_enabled():
+        return {'skipped': 1}
+
+    record_dir = get_srs_record_dir()
+    critical = _env_float('PLAYBACK_DISK_CRITICAL_PERCENT', 90)
+    target = target_percent if target_percent is not None else _env_float('PLAYBACK_DISK_TARGET_PERCENT', 75)
+    disk_pct_before = get_disk_usage_percent(record_dir)
+
+    if disk_pct_before < critical:
+        return {'disk_percent': round(disk_pct_before, 2), 'deleted': 0, 'skipped': 1}
+
+    logger.warning(
+        '磁盘使用率紧急: %.1f%% >= %.1f%%, 开始删除最旧回放录像, 目标=%.1f%%',
+        disk_pct_before, critical, target,
+    )
+
+    total_deleted = 0
+    total_freed = 0
+    batch_size = _env_int('PLAYBACK_EMERGENCY_BATCH_SIZE', 50)
+    max_rounds = _env_int('PLAYBACK_EMERGENCY_MAX_ROUNDS', 200)
+
+    for _ in range(max_rounds):
+        disk_pct = get_disk_usage_percent(record_dir)
+        if disk_pct < target:
+            break
+        entries = iter_flv_files(record_dir)
+        if not entries:
+            break
+        batch = entries[:batch_size]
+        result = _delete_oldest_entries(batch, len(batch), reason='磁盘紧急清理')
+        total_deleted += result['deleted']
+        total_freed += result.get('freed_bytes', 0)
+        if result['deleted'] == 0:
+            break
+
+    final_pct = get_disk_usage_percent(record_dir)
+    if total_deleted > 0:
+        logger.warning(
+            '磁盘紧急清理完成: 删除=%s, 释放约=%.1fMB, 磁盘 %.1f%% -> %.1f%%',
+            total_deleted, total_freed / (1024 * 1024), disk_pct_before, final_pct,
+        )
+    return {
+        'deleted': total_deleted,
+        'freed_bytes': total_freed,
+        'disk_percent_before': disk_pct_before,
+        'disk_percent_after': final_pct,
+    }
+
+
+def run_playback_disk_guard() -> Dict[str, object]:
+    """定时任务入口：综合执行各项清理策略。"""
+    if not is_cleanup_enabled():
+        logger.debug('回放磁盘守护已关闭 (PLAYBACK_CLEANUP_ENABLED=false)')
+        return {'enabled': False}
+
+    record_dir = get_srs_record_dir()
+    disk_pct = get_disk_usage_percent(record_dir)
+    warn_pct = _env_float('PLAYBACK_DISK_WARN_PERCENT', 80)
+
+    stats: Dict[str, object] = {
+        'enabled': True,
+        'record_dir': record_dir,
+        'disk_percent': round(disk_pct, 2),
+    }
+
+    stats['expired'] = cleanup_expired_files()
+    stats['global'] = cleanup_global_recordings()
+
+    if disk_pct >= warn_pct:
+        stats['emergency'] = emergency_free_disk()
+    else:
+        stats['emergency'] = {'skipped': 1, 'disk_percent': disk_pct}
+
+    logger.info(
+        '回放磁盘守护完成: dir=%s, 磁盘=%.1f%%, expired=%s, global=%s, emergency=%s',
+        record_dir, disk_pct, stats.get('expired'), stats.get('global'), stats.get('emergency'),
+    )
+    return stats
