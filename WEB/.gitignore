@@ -5,7 +5,7 @@ dist
 .cache
 dist
 dist.zip
-pnpm-lock.yaml
+# pnpm-lock.yaml 须纳入版本库：Dockerfile COPY + --frozen-lockfile 依赖此文件
 
 tests/server/static
 tests/server/static/upload
