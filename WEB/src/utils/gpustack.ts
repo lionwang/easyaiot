@@ -2,16 +2,29 @@
 
 const trimEnv = (value: string | undefined) => (value ?? '').trim()
 
-/** 当前会话内是否已关闭提示（内存态：路由切换仍生效，F5 强刷后重置） */
-let gpustackMonitorTipDismissed = false
+const GPUSTACK_MONITOR_TIP_DISMISSED_KEY = 'easyaiot_gpustack_monitor_tip_dismissed'
 
-/** 用户是否已关闭算力监控提示条（摄像头/模型管理共用，仅当前页面会话） */
+/** 用户是否已关闭算力监控提示条（摄像头/模型管理共用，持久化到 localStorage） */
 export function isGpuStackMonitorTipDismissed(): boolean {
-  return gpustackMonitorTipDismissed
+  if (typeof window === 'undefined') {
+    return false
+  }
+  try {
+    return localStorage.getItem(GPUSTACK_MONITOR_TIP_DISMISSED_KEY) === '1'
+  } catch {
+    return false
+  }
 }
 
 export function setGpuStackMonitorTipDismissed(): void {
-  gpustackMonitorTipDismissed = true
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    localStorage.setItem(GPUSTACK_MONITOR_TIP_DISMISSED_KEY, '1')
+  } catch {
+    /* 存储不可用时忽略 */
+  }
 }
 
 export function getGpuStackConsoleUrl(): string {

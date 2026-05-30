@@ -17,8 +17,16 @@
         </TabPane>
         <TabPane key="2" tab="设备列表">
           <GpuStackMonitorTip class="page-monitor-tip" />
+          <DeviceCreate
+            v-if="deviceCreateVisible"
+            :initial-kind="deviceCreateInitial.kind"
+            :initial-method="deviceCreateInitial.method"
+            :initial-brand="deviceCreateInitial.brand"
+            @back="closeDeviceCreate"
+            @success="handleDeviceCreateSuccess"
+          />
           <Gb28181DeviceDetail
-            v-if="gbDetailVisible"
+            v-else-if="gbDetailVisible"
             :sip-device-id="gbDetailSipId"
             :title="gbDetailTitle"
             channel-hint="点击下方通道进行点播播放"
@@ -43,35 +51,11 @@
           <BasicTable v-if="viewMode === 'table'" @register="registerTable">
                 <template #toolbar>
                   <div class="toolbar-buttons">
-                    <a-button type="primary" @click="handleScanOnvif">
-                      <template #icon>
-                        <RadarChartOutlined/>
-                      </template>
-                      扫描局域网ONVIF设备
-                    </a-button>
-                    <a-button @click="handleRefreshOnvifDevices">
-                      <template #icon>
-                        <SyncOutlined/>
-                      </template>
-                      更新ONVIF设备
-                    </a-button>
-                    <a-button @click="handleScanSegmentCamera">
-                      <template #icon>
-                        <SearchOutlined/>
-                      </template>
-                      跨网段扫描并注册摄像头
-                    </a-button>
-                    <a-button @click="handleScanSegmentNvr">
-                      <template #icon>
-                        <ClusterOutlined/>
-                      </template>
-                      跨网段扫描并注册NVR
-                    </a-button>
-                    <a-button @click="openAddModal('source')">
+                    <a-button type="primary" @click="openDeviceCreate()">
                       <template #icon>
                         <VideoCameraAddOutlined/>
                       </template>
-                      新增直连设备
+                      添加设备
                     </a-button>
                     <a-button @click="handleToggleViewMode" type="default">
                       <template #icon>
@@ -161,35 +145,11 @@
                   @delete-nvr-device="handleDeleteNvrDevice"
                 >
                   <template #header>
-                    <a-button type="primary" @click="handleScanOnvif">
-                      <template #icon>
-                        <RadarChartOutlined/>
-                      </template>
-                      扫描局域网ONVIF设备
-                    </a-button>
-                    <a-button @click="handleRefreshOnvifDevices">
-                      <template #icon>
-                        <SyncOutlined/>
-                      </template>
-                      更新ONVIF设备
-                    </a-button>
-                    <a-button @click="handleScanSegmentCamera">
-                      <template #icon>
-                        <SearchOutlined/>
-                      </template>
-                      跨网段扫描并注册摄像头
-                    </a-button>
-                    <a-button @click="handleScanSegmentNvr">
-                      <template #icon>
-                        <ClusterOutlined/>
-                      </template>
-                      跨网段扫描并注册NVR
-                    </a-button>
-                    <a-button @click="openAddModal('source')">
+                    <a-button type="primary" @click="openDeviceCreate()">
                       <template #icon>
                         <VideoCameraAddOutlined/>
                       </template>
-                      新增直连设备
+                      添加设备
                     </a-button>
                     <a-button @click="handleToggleViewMode" type="default">
                       <template #icon>
@@ -205,7 +165,6 @@
           <DialogPlayer title="视频播放" @register="registerPlayerAddModel"
                         @success="handlePlayerSuccess"/>
           <VideoModal @register="registerAddModel" @success="handleSuccess"/>
-          <SegmentScanModal @register="registerSegmentScanModal" @success="handleSuccess"/>
           <Gb28181DeviceModal @register="registerGbDeviceModal" @success="handleSuccess"/>
           <NvrDeviceModal @register="registerNvrDeviceModal" @success="handleSuccess"/>
         </TabPane>
@@ -240,28 +199,22 @@ import {BasicTable, TableAction, useTable} from '@/components/Table';
 import {useMessage} from '@/hooks/web/useMessage';
 import {getBasicColumns, getFormConfig} from "./Data";
 import {useModal} from "@/components/Modal";
-import {useDrawer} from '@/components/Drawer';
 import VideoModal from "./components/VideoModal/index.vue";
+import DeviceCreate from './components/DeviceCreate/index.vue';
 import {
   deleteDevice,
   deleteNvr,
   DeviceInfo,
   getDeviceList,
   getStreamStatus,
-  refreshDevices,
   startStreamForwarding,
   stopStreamForwarding,
   StreamStatusResponse,
 } from '@/api/device/camera';
 import {
-  ClusterOutlined,
-  RadarChartOutlined,
-  SearchOutlined,
   SwapOutlined,
-  SyncOutlined,
   VideoCameraAddOutlined,
 } from '@ant-design/icons-vue';
-import SegmentScanModal from './components/SegmentScanModal/index.vue';
 import DialogPlayer from "@/components/VideoPlayer/DialogPlayer.vue";
 import SplitScreenMonitor from "./components/SplitScreenMonitor/index.vue";
 import SnapSpace from "./components/SnapSpace/index.vue";
@@ -296,6 +249,12 @@ import {
 } from './utils/devicePlay';
 import Gb28181Node from "@/views/gb28181/components/Node/index.vue";
 import GpuStackMonitorTip from '@/components/GpuStackMonitorTip/index.vue';
+import {
+  parseDeviceCreateQuery,
+  type CameraBrand,
+  type CreateMethod,
+  type DeviceKind,
+} from './utils/deviceCreateOptions';
 
 defineOptions({name: 'CAMERA'})
 
@@ -303,15 +262,6 @@ const route = useRoute();
 
 const {createMessage} = useMessage();
 const [registerAddModel, {openModal}] = useModal();
-const [registerSegmentScanModal, { openDrawer: openSegmentScanModal, setDrawerProps: setSegmentScanDrawerProps }] =
-  useDrawer();
-
-function openSegmentScanDrawer(mode: 'camera' | 'nvr') {
-  setSegmentScanDrawerProps({
-    title: mode === 'nvr' ? '跨网段扫描并注册 NVR' : '跨网段扫描并注册摄像头',
-  });
-  openSegmentScanModal(true, { mode });
-}
 const [registerGbDeviceModal, {openModal: openGbDeviceModal}] = useModal();
 const [registerNvrDeviceModal, {openModal: openNvrDeviceModal}] = useModal();
 
@@ -341,6 +291,17 @@ const gbDetailTitle = ref('');
 const nvrDetailVisible = ref(false);
 const nvrDetailId = ref(0);
 const nvrDetailTitle = ref('');
+
+const deviceCreateVisible = ref(false);
+const deviceCreateInitial = reactive<{
+  kind: DeviceKind;
+  method: CreateMethod;
+  brand: CameraBrand;
+}>({
+  kind: 'camera',
+  method: 'onvif',
+  brand: 'custom',
+});
 
 // 抓拍空间组件引用
 const snapSpaceRef = ref();
@@ -938,23 +899,20 @@ const openAddModal = (type, record = null) => {
   });
 };
 
-/** 单机实时 WS-Discovery（GET /video/camera/discovery） */
-const handleScanOnvif = () => openAddModal('onvif');
+function openDeviceCreate(query?: Partial<{ kind: DeviceKind; method: CreateMethod; brand: CameraBrand }>) {
+  if (query?.kind) deviceCreateInitial.kind = query.kind;
+  if (query?.method) deviceCreateInitial.method = query.method;
+  if (query?.brand) deviceCreateInitial.brand = query.brand;
+  deviceCreateVisible.value = true;
+}
 
-/** 网段 HTTP 指纹扫描（hiktools） */
-const handleScanSegmentCamera = () => openSegmentScanDrawer('camera');
-const handleScanSegmentNvr = () => openSegmentScanDrawer('nvr');
+function closeDeviceCreate() {
+  deviceCreateVisible.value = false;
+}
 
-/** 后台刷新已录入设备的 IP（POST /video/camera/refresh） */
-const handleRefreshOnvifDevices = async () => {
-  try {
-    await refreshDevices();
-    createMessage.success('设备刷新任务已启动');
-  } catch (e) {
-    console.error(e);
-    createMessage.error('刷新失败');
-  }
-};
+function handleDeviceCreateSuccess() {
+  handleSuccess();
+}
 
 // 刷新数据
 const handleSuccess = () => {
@@ -1044,6 +1002,10 @@ onMounted(() => {
     state.activeKey = normalizeCameraRouteTab(rawTab);
   } else if (route.query.mode === 'config') {
     state.activeKey = CAMERA_TAB_KEYS.SPLIT_MONITOR;
+  }
+  if (route.query.action === 'create' && state.activeKey === CAMERA_TAB_KEYS.DEVICE_LIST) {
+    const parsed = parseDeviceCreateQuery(route.query as Record<string, unknown>);
+    openDeviceCreate(parsed);
   }
 });
 
