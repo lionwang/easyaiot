@@ -512,6 +512,37 @@ def create_app():
                     traceback.print_exc()
                     db.session.rollback()
 
+                # correlation_id：同一帧算法告警 / 人脸匹配 / 车牌匹配关联
+                try:
+                    for tbl in ('alert', 'face_match_record', 'plate_match_record'):
+                        result = db.session.execute(text(f"""
+                            SELECT EXISTS (
+                                SELECT FROM information_schema.columns
+                                WHERE table_schema = 'public'
+                                AND table_name = '{tbl}'
+                                AND column_name = 'correlation_id'
+                            );
+                        """))
+                        if not result.scalar():
+                            print(f"⚠️  {tbl}.correlation_id 列不存在，正在添加...")
+                            db.session.execute(text(f"""
+                                ALTER TABLE {tbl}
+                                ADD COLUMN correlation_id VARCHAR(36) NULL;
+                            """))
+                            db.session.commit()
+                            print(f"✅ {tbl}.correlation_id 列添加成功")
+                        db.session.execute(text(f"""
+                            CREATE INDEX IF NOT EXISTS idx_{tbl}_correlation_id
+                            ON {tbl} (correlation_id);
+                        """))
+                        db.session.commit()
+                    print("✅ correlation_id 关联字段迁移检查完成")
+                except Exception as e:
+                    print(f"⚠️  correlation_id 迁移检查失败: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    db.session.rollback()
+
                 # GB28181 等设备 ID 超过原 VARCHAR(30)，会导致 iot-sink 写入 alert 失败，前端告警列表为空
                 try:
                     widen_specs = [

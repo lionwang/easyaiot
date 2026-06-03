@@ -43,6 +43,9 @@ public class FaceMatchingMessage {
     @JsonAlias("alert_id")
     private Integer alertId;
 
+    @JsonAlias("correlation_id")
+    private String correlationId;
+
     private List<Integer> bbox;
 
     private Double confidence;

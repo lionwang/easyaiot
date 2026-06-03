@@ -22,6 +22,7 @@ import requests
 import json
 import socket
 import urllib.parse
+import uuid
 from datetime import datetime, timezone
 import pytz
 from pathlib import Path
@@ -1399,6 +1400,7 @@ def try_send_alert_for_detections(
             detections[0] if detections else {}
         )
         algorithm_name = task_config.task_name if task_config and hasattr(task_config, 'task_name') else 'detection'
+        correlation_id = str(uuid.uuid4())
         alert_data = {
             'object': primary_object,
             'event': algorithm_name,
@@ -1406,6 +1408,7 @@ def try_send_alert_for_detections(
             'device_name': device_name,
             # GB28181/实时算法统一走 realtime，便于 hook 侧选择 Kafka 主题与任务查询（snap/snapshot 另有分支）
             'task_type': 'realtime',
+            'correlation_id': correlation_id,
             'face_detection_enabled': bool(getattr(task_config, 'face_detection_enabled', False)),
             'plate_detection_enabled': bool(getattr(task_config, 'plate_detection_enabled', False)),
             'time': datetime.fromtimestamp(current_timestamp, tz=BEIJING_TZ).strftime('%Y-%m-%d %H:%M:%S'),
@@ -1414,6 +1417,7 @@ def try_send_alert_for_detections(
                 'object_counts': object_counts,
                 'detections': all_detections_info,
                 'frame_number': frame_number,
+                'correlation_id': correlation_id,
             }),
             'image_path': image_path if image_path else None,
         }
@@ -1423,12 +1427,14 @@ def try_send_alert_for_detections(
             device_name=device_name,
             frame_for_image=frame_for_image,
             frame_number=frame_number,
+            correlation_id=correlation_id,
         )
         try_send_plate_matching_for_frame(
             device_id=device_id,
             device_name=device_name,
             frame_for_image=frame_for_image,
             frame_number=frame_number,
+            correlation_id=correlation_id,
         )
         extra = f" {log_suffix}" if log_suffix else ""
         logger.info(f"📨 已发送告警事件{extra}：帧 {frame_number}，{len(detections)} 个目标（{object_counts}）")
@@ -1561,6 +1567,7 @@ def try_send_face_matching_for_frame(
     device_name: str,
     frame_for_image: np.ndarray,
     frame_number: int,
+    correlation_id: Optional[str] = None,
 ) -> None:
     """启用人脸匹配时，将帧送入独立人脸抓取队列（不阻塞主算法链路）"""
     if not task_config or not bool(getattr(task_config, 'face_matching_enabled', False)):
@@ -1585,6 +1592,7 @@ def try_send_face_matching_for_frame(
         library_ids=library_ids,
         threshold=_resolve_face_matching_threshold(),
         publish_url=FACE_MATCHING_PUBLISH_URL,
+        correlation_id=correlation_id,
     )
 
 
@@ -1593,6 +1601,7 @@ def try_send_plate_matching_for_frame(
     device_name: str,
     frame_for_image: np.ndarray,
     frame_number: int,
+    correlation_id: Optional[str] = None,
 ) -> None:
     """启用车牌匹配时，将帧送入独立车牌抓取队列（不阻塞主算法链路）"""
     if not task_config or not bool(getattr(task_config, 'plate_matching_enabled', False)):
@@ -1616,6 +1625,7 @@ def try_send_plate_matching_for_frame(
         task_type='realtime',
         library_ids=library_ids,
         publish_url=PLATE_MATCHING_PUBLISH_URL,
+        correlation_id=correlation_id,
     )
 
 

@@ -129,6 +129,7 @@ class Alert(db.Model):
     notification_sent = db.Column(db.Boolean, default=False, nullable=False, comment='是否已发送通知')
     notification_sent_time = db.Column(db.DateTime, nullable=True, comment='通知发送时间')
     business_tags = db.Column(db.Text, nullable=True, comment='业务标签（JSON数组，库匹配告警携带匹配库标签）')
+    correlation_id = db.Column(db.String(36), nullable=True, index=True, comment='关联事件ID（同一帧算法告警/人脸/车牌）')
 
 
 class SnapSpace(db.Model):
@@ -995,7 +996,8 @@ class FaceMatchRecord(db.Model):
     similarity = db.Column(db.Float, nullable=True, comment='最高相似度')
     threshold = db.Column(db.Float, nullable=True, comment='使用的阈值')
     candidates = db.Column(db.Text, nullable=True, comment='候选结果（JSON）')
-    alert_id = db.Column(db.Integer, nullable=True, comment='关联告警ID')
+    alert_id = db.Column(db.Integer, nullable=True, comment='库匹配命中后新建的告警ID')
+    correlation_id = db.Column(db.String(36), nullable=True, index=True, comment='关联事件ID（与算法告警同一帧）')
     task_type = db.Column(db.String(20), nullable=True, comment='任务类型')
     status = db.Column(db.String(20), default='pending', nullable=False, comment='处理状态[pending,success,failed]')
     error_message = db.Column(db.String(500), nullable=True, comment='错误信息')
@@ -1026,6 +1028,7 @@ class FaceMatchRecord(db.Model):
             'threshold': self.threshold,
             'candidates': candidates,
             'alert_id': self.alert_id,
+            'correlation_id': self.correlation_id,
             'task_type': self.task_type,
             'status': self.status,
             'error_message': self.error_message,
@@ -1180,7 +1183,8 @@ class PlateMatchRecord(db.Model):
     matched_plate_entry_id = db.Column(db.Integer, nullable=True, comment='匹配到的车牌条目ID')
     matched_owner_name = db.Column(db.String(255), nullable=True, comment='匹配到的车主姓名')
     detect_conf = db.Column(db.Float, nullable=True, comment='识别置信度')
-    alert_id = db.Column(db.Integer, nullable=True, comment='关联告警ID')
+    alert_id = db.Column(db.Integer, nullable=True, comment='库匹配命中后新建的告警ID')
+    correlation_id = db.Column(db.String(36), nullable=True, index=True, comment='关联事件ID（与算法告警同一帧）')
     task_type = db.Column(db.String(20), nullable=True, comment='任务类型')
     status = db.Column(db.String(20), default='pending', nullable=False, comment='处理状态[pending,success,failed]')
     error_message = db.Column(db.String(500), nullable=True, comment='错误信息')
@@ -1203,6 +1207,7 @@ class PlateMatchRecord(db.Model):
             'matched_owner_name': self.matched_owner_name,
             'detect_conf': self.detect_conf,
             'alert_id': self.alert_id,
+            'correlation_id': self.correlation_id,
             'task_type': self.task_type,
             'status': self.status,
             'error_message': self.error_message,

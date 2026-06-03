@@ -34,10 +34,11 @@ def build_face_matching_message(
         face_image_path: str,
         threshold: Optional[float],
         alert_id: Optional[int] = None,
+        correlation_id: Optional[str] = None,
         bbox: Optional[list] = None,
         confidence: Optional[float] = None,
 ) -> Dict:
-    return {
+    message = {
         'taskId': task_id,
         'taskName': task_name,
         'taskType': task_type or 'realtime',
@@ -53,6 +54,9 @@ def build_face_matching_message(
         'confidence': confidence,
         'timestamp': datetime.now().isoformat(),
     }
+    if correlation_id:
+        message['correlationId'] = correlation_id
+    return message
 
 
 def send_face_matching_to_kafka(message: Dict) -> bool:

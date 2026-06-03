@@ -47,6 +47,9 @@ public class PlateMatchingMessage {
     @JsonAlias("alert_id")
     private Integer alertId;
 
+    @JsonAlias("correlation_id")
+    private String correlationId;
+
     private List<Integer> rect;
 
     private List<List<Double>> landmarks;

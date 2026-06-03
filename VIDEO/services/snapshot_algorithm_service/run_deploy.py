@@ -22,6 +22,7 @@ import requests
 import json
 import socket
 import urllib.parse
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -1274,6 +1275,7 @@ def try_send_snapshot_detection_alert(
         detections[0],
     )
     algorithm_name = getattr(task_config, 'task_name', None) or 'detection'
+    correlation_id = str(uuid.uuid4())
     alert_data = {
         'object': primary,
         'event': algorithm_name,
@@ -1282,11 +1284,13 @@ def try_send_snapshot_detection_alert(
         'face_detection_enabled': bool(getattr(task_config, 'face_detection_enabled', False)),
         'plate_detection_enabled': bool(getattr(task_config, 'plate_detection_enabled', False)),
         'time': datetime.fromtimestamp(frame_timestamp).strftime('%Y-%m-%d %H:%M:%S'),
+        'correlation_id': correlation_id,
         'information': json.dumps({
             'total_count': len(detections),
             'object_counts': object_counts,
             'detections': all_info,
             'frame_number': frame_number,
+            'correlation_id': correlation_id,
             'task_type': 'snapshot',
             'cron_capture': False,
         }),
@@ -1294,7 +1298,7 @@ def try_send_snapshot_detection_alert(
     }
     logger.info(
         f"🚨 设备 {device_id} 检测告警: 帧 {frame_number}, "
-        f"{len(detections)} 个目标 {object_counts}"
+        f"{len(detections)} 个目标 {object_counts}, correlation_id={correlation_id}"
     )
     send_alert_event_async(alert_data)
     try_send_face_matching_for_frame(
@@ -1302,12 +1306,14 @@ def try_send_snapshot_detection_alert(
         device_name=device_name,
         frame_for_image=frame_image,
         frame_number=frame_number,
+        correlation_id=correlation_id,
     )
     try_send_plate_matching_for_frame(
         device_id=device_id,
         device_name=device_name,
         frame_for_image=frame_image,
         frame_number=frame_number,
+        correlation_id=correlation_id,
     )
 
 
@@ -1583,6 +1589,7 @@ def try_send_face_matching_for_frame(
     device_name: str,
     frame_for_image: np.ndarray,
     frame_number: int,
+    correlation_id: Optional[str] = None,
 ) -> None:
     if not task_config or not bool(getattr(task_config, 'face_matching_enabled', False)):
         return
@@ -1604,6 +1611,7 @@ def try_send_face_matching_for_frame(
         library_ids=library_ids,
         threshold=_resolve_face_matching_threshold(),
         publish_url=FACE_MATCHING_PUBLISH_URL,
+        correlation_id=correlation_id,
     )
 
 
@@ -1612,6 +1620,7 @@ def try_send_plate_matching_for_frame(
     device_name: str,
     frame_for_image: np.ndarray,
     frame_number: int,
+    correlation_id: Optional[str] = None,
 ) -> None:
     if not task_config or not bool(getattr(task_config, 'plate_matching_enabled', False)):
         return
@@ -1632,6 +1641,7 @@ def try_send_plate_matching_for_frame(
         task_type='snap',
         library_ids=library_ids,
         publish_url=PLATE_MATCHING_PUBLISH_URL,
+        correlation_id=correlation_id,
     )
 
 

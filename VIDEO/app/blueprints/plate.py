@@ -380,6 +380,7 @@ def publish_plate_matching():
             plate_image_path=data.get('plateImagePath') or data.get('plate_image_path'),
             detect_conf=data.get('detectConf') or data.get('detect_conf'),
             alert_id=data.get('alertId') or data.get('alert_id'),
+            correlation_id=data.get('correlationId') or data.get('correlation_id'),
             rect=data.get('rect'),
             landmarks=data.get('landmarks'),
         )
@@ -410,6 +411,7 @@ def list_plate_match_records():
         library_id = request.args.get('library_id')
         device_id = request.args.get('device_id')
         matched_raw = request.args.get('matched')
+        correlation_id = request.args.get('correlation_id') or request.args.get('correlationId')
         matched = None
         if matched_raw is not None and matched_raw != '':
             matched = str(matched_raw).lower() in {'1', 'true', 'yes'}
@@ -419,6 +421,7 @@ def list_plate_match_records():
             library_id=int(library_id) if library_id else None,
             device_id=device_id,
             matched=matched,
+            correlation_id=correlation_id,
         )
         return jsonify({'code': 0, 'msg': 'success', **data})
     except Exception as e:

@@ -129,6 +129,9 @@ def _alert_to_dict(alert: Alert) -> dict:
             business_tags = []
     result['business_tags'] = business_tags
 
+    if hasattr(alert, 'correlation_id'):
+        result['correlation_id'] = alert.correlation_id
+
     return result
 
 
@@ -154,6 +157,12 @@ def _get_alert_filter_query(args: dict) -> Query:
         device_id_value = args['device_id'].strip() if isinstance(args['device_id'], str) else args['device_id']
         if device_id_value:
             query = query.filter(Alert.device_id == device_id_value)
+
+    correlation_id = args.get('correlation_id') or args.get('correlationId')
+    if correlation_id:
+        correlation_id = str(correlation_id).strip()
+        if correlation_id:
+            query = query.filter(Alert.correlation_id == correlation_id)
 
     if 'task_type' in args and args['task_type']:
         task_type_value = args['task_type'].strip() if isinstance(args['task_type'], str) else args['task_type']
@@ -269,6 +278,33 @@ def get_alert_list(args: dict) -> dict:
             'alert_list': [_alert_to_dict(alert) for alert in alerts],
             'total': len(alerts)
         }
+
+
+def get_correlation_events(correlation_id: str) -> dict:
+    """按 correlation_id 聚合查询同一帧的算法告警、人脸匹配、车牌匹配记录。"""
+    from models import FaceMatchRecord, PlateMatchRecord
+
+    cid = str(correlation_id or '').strip()
+    if not cid:
+        raise ValueError('correlation_id 不能为空')
+
+    alerts = Alert.query.filter(Alert.correlation_id == cid).order_by(Alert.id.asc()).all()
+    face_records = (
+        FaceMatchRecord.query.filter(FaceMatchRecord.correlation_id == cid)
+        .order_by(FaceMatchRecord.id.asc())
+        .all()
+    )
+    plate_records = (
+        PlateMatchRecord.query.filter(PlateMatchRecord.correlation_id == cid)
+        .order_by(PlateMatchRecord.id.asc())
+        .all()
+    )
+    return {
+        'correlation_id': cid,
+        'alerts': [_alert_to_dict(a) for a in alerts],
+        'face_match_records': [r.to_dict() for r in face_records],
+        'plate_match_records': [r.to_dict() for r in plate_records],
+    }
 
 
 def get_alert_count(args: dict) -> dict:
@@ -420,12 +456,15 @@ def create_alert(alert_data: dict) -> dict:
 
         task_id = alert_data.get('task_id')
         task_name = alert_data.get('task_name')
+        correlation_id = alert_data.get('correlation_id') or alert_data.get('correlationId')
+        if correlation_id:
+            correlation_id = str(correlation_id).strip() or None
 
         # 若传入 task_name，则写入 object（任务展示名）；否则使用 object 字段
         object_value = alert_data['object']
         if task_name:
             object_value = task_name
-        
+
         # 创建报警记录
         alert = Alert(
             object=object_value,
@@ -444,6 +483,7 @@ def create_alert(alert_data: dict) -> dict:
             notify_users=notify_users,
             channels=channels,
             business_tags=business_tags,
+            correlation_id=correlation_id,
         )
         
         db.session.add(alert)

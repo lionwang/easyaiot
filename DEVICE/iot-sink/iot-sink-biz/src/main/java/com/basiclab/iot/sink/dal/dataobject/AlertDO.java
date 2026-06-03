@@ -94,5 +94,10 @@ public class AlertDO {
      * 通知发送时间
      */
     private LocalDateTime notificationSentTime;
+
+    /**
+     * 关联事件ID（同一帧算法告警/人脸/车牌）
+     */
+    private String correlationId;
 }
 

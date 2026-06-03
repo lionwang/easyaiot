@@ -514,6 +514,7 @@ def publish_face_matching():
             face_image_path=face_image_path,
             threshold=data.get('threshold') or data.get('faceMatchingThreshold') or data.get('face_matching_threshold'),
             alert_id=data.get('alertId') or data.get('alert_id'),
+            correlation_id=data.get('correlationId') or data.get('correlation_id'),
             bbox=data.get('bbox'),
             confidence=data.get('confidence'),
         )
@@ -548,6 +549,7 @@ def list_face_match_records():
         library_id = request.args.get("library_id")
         device_id = request.args.get("device_id")
         matched_raw = request.args.get("matched")
+        correlation_id = request.args.get("correlation_id") or request.args.get("correlationId")
         matched = None
         if matched_raw is not None and matched_raw != "":
             matched = str(matched_raw).lower() in {"1", "true", "yes"}
@@ -557,6 +559,7 @@ def list_face_match_records():
             library_id=int(library_id) if library_id else None,
             device_id=device_id,
             matched=matched,
+            correlation_id=correlation_id,
         )
         return jsonify({"code": 0, "msg": "success", **data})
     except Exception as e:

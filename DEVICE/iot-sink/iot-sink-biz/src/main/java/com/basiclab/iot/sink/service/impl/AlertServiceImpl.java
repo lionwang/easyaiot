@@ -1019,6 +1019,7 @@ public class AlertServiceImpl implements AlertService {
             // 设置通知发送状态（初始为false，后续由iot-message服务更新）
             alertDO.setNotificationSent(false);
             alertDO.setNotificationSentTime(null);
+            alertDO.setCorrelationId(notificationMessage.getCorrelationId());
             
             // 插入数据库（使用@DS("video")注解的Mapper会自动切换到VIDEO数据库）
             int result = alertMapper.insert(alertDO);

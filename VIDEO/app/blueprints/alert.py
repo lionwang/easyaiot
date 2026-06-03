@@ -16,7 +16,8 @@ from app.services.alert_service import (
     create_alert,
     get_dashboard_statistics,
     clear_all_alerts,
-    clear_alerts_by_task_name
+    clear_alerts_by_task_name,
+    get_correlation_events,
 )
 from app.services.alert_hook_service import process_alert_hook
 
@@ -59,6 +60,22 @@ def get_alert_list_route():
     except Exception as e:
         logger.error(f'获取报警列表失败: {str(e)}', exc_info=True)
         return api_response(500, f'获取失败: {str(e)}')
+
+
+@alert_bp.route('/correlation', methods=['GET'])
+def get_correlation_events_route():
+    """按 correlation_id 查询同一帧关联的告警、人脸匹配、车牌匹配记录"""
+    try:
+        correlation_id = request.args.get('correlation_id') or request.args.get('correlationId')
+        if not correlation_id:
+            return api_response(400, 'correlation_id 不能为空')
+        result = get_correlation_events(correlation_id)
+        return api_response(data=result)
+    except ValueError as e:
+        return api_response(400, str(e))
+    except Exception as e:
+        logger.error(f'查询关联事件失败: {str(e)}', exc_info=True)
+        return api_response(500, f'查询失败: {str(e)}')
 
 
 @alert_bp.route('/count')

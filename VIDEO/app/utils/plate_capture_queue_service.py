@@ -135,6 +135,9 @@ def _process_task(task: Dict[str, Any]) -> None:
             'rect': det.get('rect'),
             'landmarks': det.get('landmarks'),
         }
+        correlation_id = task.get('correlation_id')
+        if correlation_id:
+            payload['correlationId'] = correlation_id
         _publish_plate_matching(payload, publish_url)
 
 
@@ -188,6 +191,7 @@ def enqueue_plate_capture(
     task_type: str,
     library_ids: list,
     publish_url: str,
+    correlation_id: Optional[str] = None,
 ) -> bool:
     """非阻塞入队；队列满时可选丢弃旧任务保留最新，不影响主算法线程。"""
     if not _running or _queue is None:
@@ -204,6 +208,8 @@ def enqueue_plate_capture(
         'publish_url': publish_url,
         'frame': frame.copy(),
     }
+    if correlation_id:
+        task['correlation_id'] = correlation_id
 
     drained = 0
     if PLATE_CAPTURE_KEEP_LATEST and _queue.qsize() >= PLATE_CAPTURE_KEEP_LATEST_THRESHOLD:

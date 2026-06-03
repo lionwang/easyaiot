@@ -65,6 +65,7 @@ public class PlateMatchingServiceImpl implements PlateMatchingService {
         payload.put("plateImagePath", message.getPlateImagePath());
         payload.put("detectConf", message.getDetectConf());
         payload.put("alertId", message.getAlertId());
+        payload.put("correlationId", message.getCorrelationId());
         payload.put("rect", message.getRect());
         payload.put("landmarks", message.getLandmarks());
 

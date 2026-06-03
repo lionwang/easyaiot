@@ -34,10 +34,11 @@ def build_plate_matching_message(
         plate_image_path: Optional[str] = None,
         detect_conf: Optional[float] = None,
         alert_id: Optional[int] = None,
+        correlation_id: Optional[str] = None,
         rect: Optional[list] = None,
         landmarks: Optional[list] = None,
 ) -> Dict:
-    return {
+    message = {
         'taskId': task_id,
         'taskName': task_name,
         'taskType': task_type or 'realtime',
@@ -54,6 +55,9 @@ def build_plate_matching_message(
         'landmarks': landmarks,
         'timestamp': datetime.now().isoformat(),
     }
+    if correlation_id:
+        message['correlationId'] = correlation_id
+    return message
 
 
 def send_plate_matching_to_kafka(message: Dict) -> bool:

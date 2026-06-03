@@ -780,6 +780,7 @@ def list_match_records(
     library_id: Optional[int] = None,
     device_id: Optional[str] = None,
     matched: Optional[bool] = None,
+    correlation_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     query = FaceMatchRecord.query
     if library_id:
@@ -788,6 +789,10 @@ def list_match_records(
         query = query.filter_by(device_id=device_id)
     if matched is not None:
         query = query.filter_by(matched=matched)
+    if correlation_id:
+        cid = str(correlation_id).strip()
+        if cid:
+            query = query.filter_by(correlation_id=cid)
     total = query.count()
     rows = (
         query.order_by(FaceMatchRecord.id.desc())

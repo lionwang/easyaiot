@@ -185,7 +185,7 @@ def _build_minimal_alert_kafka_message(
     必须与 iot-sink AlertNotificationMessage / Python 驼峰字段一致，否则 sink 无法解析 imagePath、无法上传 MinIO。
     """
     sw = detection_switches or {}
-    return {
+    message = {
         'deviceId': alert_data.get('device_id'),
         'deviceName': alert_data.get('device_name'),
         'alert': {
@@ -206,6 +206,10 @@ def _build_minimal_alert_kafka_message(
         'shouldNotify': False,
         'timestamp': datetime.now().isoformat(),
     }
+    correlation_id = alert_data.get('correlation_id') or alert_data.get('correlationId')
+    if correlation_id:
+        message['correlationId'] = correlation_id
+    return message
 
 
 def _is_userless_notify_method(method: str) -> bool:
@@ -960,6 +964,9 @@ def _build_notification_message_for_kafka(alert_data: Dict, notification_config:
         'shouldNotify': should_notify,  # 是否需要发送通知
         'timestamp': datetime.now().isoformat()
     }
+    correlation_id = alert_data.get('correlation_id') or alert_data.get('correlationId')
+    if correlation_id:
+        message['correlationId'] = correlation_id
     
     logger.info(f"✅ 告警通知消息构建成功: device_id={device_id}, task_id={task_id}, "
                 f"shouldNotify={should_notify}, notifyUsers数量={len(notify_users)}, "

@@ -87,6 +87,12 @@ public class AlertNotificationMessage {
      * 是否开启了车牌检测（用于车牌ODS下沉分流）
      */
     private Boolean plateDetectionEnabled;
+
+    /**
+     * 关联事件ID（同一帧算法告警/人脸/车牌）
+     */
+    @JsonAlias("correlation_id")
+    private String correlationId;
     
     /**
      * 告警信息内部类

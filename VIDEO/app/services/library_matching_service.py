@@ -99,6 +99,14 @@ def _library_tags(library) -> List[str]:
     return parse_business_tags(getattr(library, 'business_tags', None))
 
 
+def _resolve_correlation_id(payload: Dict[str, Any]) -> Optional[str]:
+    cid = payload.get('correlationId') or payload.get('correlation_id')
+    if cid is None:
+        return None
+    cid = str(cid).strip()
+    return cid or None
+
+
 def _create_match_alert(
     *,
     event: str,
@@ -111,9 +119,12 @@ def _create_match_alert(
     task_type: Optional[str],
     business_tags: List[str],
     information: Dict[str, Any],
+    correlation_id: Optional[str] = None,
 ) -> Optional[int]:
     """匹配成功后写入告警库，并上传 MinIO 供列表展示。"""
     try:
+        if correlation_id:
+            information = {**information, 'correlation_id': correlation_id}
         alert_dict = create_alert({
             'object': object_label,
             'event': event,
@@ -125,6 +136,7 @@ def _create_match_alert(
             'task_type': task_type or 'realtime',
             'business_tags': business_tags,
             'information': information,
+            'correlation_id': correlation_id,
         })
         alert_id = alert_dict.get('id')
         if alert_id and image_path:
@@ -216,6 +228,7 @@ def process_face_matching_message(payload: Dict[str, Any]) -> FaceMatchRecord:
     device_name = payload.get('deviceName') or payload.get('device_name')
     task_name = payload.get('taskName') or payload.get('task_name')
     task_type = payload.get('taskType') or payload.get('task_type')
+    correlation_id = _resolve_correlation_id(payload)
 
     matched = False
     best_match = None
@@ -244,6 +257,7 @@ def process_face_matching_message(payload: Dict[str, Any]) -> FaceMatchRecord:
                 task_name=task_name,
                 task_type=task_type,
                 business_tags=business_tags,
+                correlation_id=correlation_id,
                 information={
                     'match_type': 'face',
                     'library_id': matched_library.id,
@@ -275,6 +289,7 @@ def process_face_matching_message(payload: Dict[str, Any]) -> FaceMatchRecord:
         threshold=threshold,
         candidates=candidates_json,
         alert_id=alert_id,
+        correlation_id=correlation_id,
         task_type=task_type,
         status='success',
     )
@@ -300,6 +315,7 @@ def process_plate_matching_message(payload: Dict[str, Any]) -> PlateMatchRecord:
     task_type = payload.get('taskType') or payload.get('task_type')
     plate_image_path = payload.get('plateImagePath') or payload.get('plate_image_path')
     plate_color = payload.get('plateColor') or payload.get('plate_color')
+    correlation_id = _resolve_correlation_id(payload)
 
     matched = False
     match_result = None
@@ -324,6 +340,7 @@ def process_plate_matching_message(payload: Dict[str, Any]) -> PlateMatchRecord:
                 task_name=task_name,
                 task_type=task_type,
                 business_tags=business_tags,
+                correlation_id=correlation_id,
                 information={
                     'match_type': 'plate',
                     'library_id': matched_library.id,
@@ -354,6 +371,7 @@ def process_plate_matching_message(payload: Dict[str, Any]) -> PlateMatchRecord:
         matched_owner_name=(entry or {}).get('owner_name') if entry else None,
         detect_conf=payload.get('detectConf') or payload.get('detect_conf'),
         alert_id=alert_id,
+        correlation_id=correlation_id,
         task_type=task_type,
         status='success',
     )
