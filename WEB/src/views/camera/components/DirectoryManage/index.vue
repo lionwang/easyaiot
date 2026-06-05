@@ -6,33 +6,30 @@
         <div class="sidebar-tree">
           <div class="tree-header">
             <div class="tree-header-button">
-              <a-button :loading="treeLoading || treeRefreshing" @click="handleRefreshTree">
-                <template #icon>
-                  <Icon icon="ant-design:reload-outlined" />
-                </template>
+              <Space :size="6" :wrap="false">
+                <Button type="primary" preIcon="ant-design:plus-outlined" @click="handleAddDirectory">
+                  添加目录
+                </Button>
+                <Button preIcon="ant-design:code-outlined" @click="handleOpenJsonEditor">
+                  JSON 编辑
+                </Button>
+              </Space>
+              <Button
+                :loading="treeLoading || treeRefreshing"
+                preIcon="ant-design:reload-outlined"
+                @click="handleRefreshTree"
+              >
                 刷新
-              </a-button>
-              <a-button type="primary" @click="handleAddDirectory">
-                <template #icon>
-                  <PlusOutlined />
-                </template>
-                添加目录
-              </a-button>
-              <a-button @click="handleOpenJsonEditor">
-                <template #icon>
-                  <Icon icon="ant-design:code-outlined" />
-                </template>
-                JSON 编辑
-              </a-button>
+              </Button>
             </div>
           </div>
           <div class="tree-content">
             <div v-if="selectedDirectoryId && !selectedDirectoryIsDefault" class="tree-dir-actions">
-              <a-button type="link" size="small" @click="handleEditSelectedDirectory">
+              <Button type="link" size="small" @click="handleEditSelectedDirectory">
                 编辑目录
-              </a-button>
+              </Button>
               <a-popconfirm title="确定删除此目录？" @confirm="handleDeleteSelectedDirectory">
-                <a-button type="link" size="small" danger>删除目录</a-button>
+                <Button type="link" size="small" danger>删除目录</Button>
               </a-popconfirm>
             </div>
             <BasicTree
@@ -55,23 +52,18 @@
 
       <!-- 右侧：设备列表 -->
       <div class="device-content">
-        <div class="device-button-group">
-          <a-button type="primary" :loading="syncCamerasLoading" @click="handleSyncCameras">
-            <template #icon>
-              <Icon icon="ant-design:cloud-sync-outlined" />
-            </template>
+        <Space wrap :size="8" class="device-button-group">
+          <Button type="primary" :loading="syncCamerasLoading" preIcon="ant-design:cloud-sync-outlined" @click="handleSyncCameras">
             同步摄像头
-          </a-button>
-          <a-button
+          </Button>
+          <Button
             :disabled="!selectedDirectoryId || !checkedKeys.length"
+            preIcon="ant-design:folder-open-outlined"
             @click="handleBatchMoveToDirectory"
           >
-            <template #icon>
-              <Icon icon="ant-design:folder-open-outlined" />
-            </template>
             批量移动到目录
-          </a-button>
-        </div>
+          </Button>
+        </Space>
         <BasicTable @register="registerTable">
           <template #bodyCell="{ column, record }">
             <!-- 统一复制功能组件 -->
@@ -157,8 +149,9 @@ import { useMessage } from '@/hooks/web/useMessage';
 import { useModal } from '@/components/Modal';
 import { BasicTable, TableAction, useTable } from '@/components/Table';
 import { BasicTree, type TreeItem } from '@/components/Tree';
+import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
-import { Tag as ATag, Input as AInput } from 'ant-design-vue';
+import { Tag as ATag, Input as AInput, Space } from 'ant-design-vue';
 import {
   deleteDirectory,
   getStreamStatus,
@@ -175,9 +168,6 @@ import type { TreeProps } from 'ant-design-vue';
 import DirectoryModal from './DirectoryModal.vue';
 import DirectoryJsonModal from './DirectoryJsonModal.vue';
 import MoveDevicesToDirectoryModal from './MoveDevicesToDirectoryModal.vue';
-import {
-  PlusOutlined,
-} from '@ant-design/icons-vue';
 import {
   formatCameraDeviceLabel,
   hasCopyableDeviceIp,
@@ -980,11 +970,13 @@ onMounted(() => {
     
     .tree-header {
       margin-bottom: 16px;
-      
+      overflow: visible;
+
       .tree-header-button {
         display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
         gap: 8px;
       }
     }
@@ -1023,8 +1015,11 @@ onMounted(() => {
 .device-button-group {
   margin-bottom: 16px;
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+
+  :deep(.ant-space) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 }
 </style>
