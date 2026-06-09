@@ -65,27 +65,23 @@
           </div>
         </div>
     </div>
-
-    <!-- 录像管理模态框 -->
-    <RecordVideoModal @register="registerVideoModal"/>
   </div>
 </template>
 
 <script lang="ts" setup>
 import {computed, onMounted, onUnmounted, ref} from 'vue';
+import {useRouter} from 'vue-router';
 import {Empty, List, Spin} from 'ant-design-vue';
 import {BasicForm, useForm} from '@/components/Form';
-import {useModal} from '@/components/Modal';
 import {useMessage} from '@/hooks/web/useMessage';
 import {deleteRecordSpace, getRecordSpaceList, getRecordVideoList, type RecordSpace} from '@/api/device/record';
-import RecordVideoModal from './RecordVideoModal.vue';
 import recordSpaceIcon from '@/assets/images/video/snap-space-icon.png';
 const ListItem = List.Item;
 
 defineOptions({name: 'RecordSpace'});
 
+const router = useRouter();
 const {createMessage} = useMessage();
-const [registerVideoModal, {openModal: openVideoModal}] = useModal();
 
 const spaceList = ref<RecordSpace[]>([]);
 const loading = ref(false);
@@ -173,9 +169,9 @@ const loadSpaceList = async () => {
   }
 };
 
-// 查看录像
+// 查看录像 — 跳转独立回放页
 const handleViewVideos = (record: RecordSpace) => {
-  openVideoModal(true, {space_id: record.id, space_name: record.space_name});
+  router.push({ path: `/record-space-manage/${record.id}` });
 };
 
 // 删除
@@ -305,7 +301,7 @@ onUnmounted(() => {
     .project-icon-item {
       display: inline-block;
       width: 100%;
-      height: 122px;
+      min-height: 122px;
       margin-bottom: 8px;
       position: relative;
       text-align: center;
@@ -313,9 +309,10 @@ onUnmounted(() => {
 
       .project-icon-item_name {
         color: #000000a6;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        line-height: 1.4;
+        padding: 0 4px;
+        white-space: normal;
+        word-break: break-word;
       }
 
       .project-icon-item_more {

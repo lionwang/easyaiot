@@ -65,27 +65,23 @@
           </div>
         </div>
     </div>
-
-    <!-- 图片管理模态框 -->
-    <SnapImageModal @register="registerImageModal"/>
   </div>
 </template>
 
 <script lang="ts" setup>
 import {computed, onMounted, onUnmounted, ref} from 'vue';
+import {useRouter} from 'vue-router';
 import {Empty, List, Spin} from 'ant-design-vue';
 import {BasicForm, useForm} from '@/components/Form';
-import {useModal} from '@/components/Modal';
 import {useMessage} from '@/hooks/web/useMessage';
 import {deleteSnapSpace, getSnapSpaceList, getSnapImageList, type SnapSpace} from '@/api/device/snap';
-import SnapImageModal from './SnapImageModal.vue';
 import snapSpaceIcon from '@/assets/images/video/snap-space-icon.png';
 const ListItem = List.Item;
 
 defineOptions({name: 'SnapSpace'});
 
+const router = useRouter();
 const {createMessage} = useMessage();
-const [registerImageModal, {openModal: openImageModal}] = useModal();
 
 const spaceList = ref<SnapSpace[]>([]);
 const loading = ref(false);
@@ -173,9 +169,9 @@ const loadSpaceList = async () => {
   }
 };
 
-// 查看图片
+// 查看图片 — 跳转独立抓拍页
 const handleViewImages = (record: SnapSpace) => {
-  openImageModal(true, {space_id: record.id, space_name: record.space_name});
+  router.push({ path: `/snap-space-manage/${record.id}` });
 };
 
 // 删除
@@ -305,7 +301,7 @@ onUnmounted(() => {
     .project-icon-item {
       display: inline-block;
       width: 100%;
-      height: 122px;
+      min-height: 122px;
       margin-bottom: 8px;
       position: relative;
       text-align: center;
@@ -313,9 +309,10 @@ onUnmounted(() => {
 
       .project-icon-item_name {
         color: #000000a6;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        line-height: 1.4;
+        padding: 0 4px;
+        white-space: normal;
+        word-break: break-word;
       }
 
       .project-icon-item_more {

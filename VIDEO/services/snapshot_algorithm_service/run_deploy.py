@@ -288,11 +288,16 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localho
 VIDEO_SERVICE_PORT = os.getenv('VIDEO_SERVICE_PORT', '6000')
 # 网关地址（用于构建完整的告警hook URL）
 GATEWAY_URL = os.getenv('GATEWAY_URL', 'http://localhost:48080')
-# 告警hook URL：优先使用 GATEWAY_URL，否则回退 VIDEO_SERVICE_PORT
-if GATEWAY_URL and GATEWAY_URL != 'http://localhost:48080':
-    ALERT_HOOK_URL = f"{GATEWAY_URL}/video/alert/hook"
-    FACE_MATCHING_PUBLISH_URL = f"{GATEWAY_URL}/video/face/matching/publish"
-    PLATE_MATCHING_PUBLISH_URL = f"{GATEWAY_URL}/video/plate/matching/publish"
+# 告警 hook URL：经网关须带 /admin-api 前缀（见 iot-gateway application.yaml video-admin-api 路由）
+_GATEWAY_BASE = (GATEWAY_URL or '').rstrip('/')
+_USE_GATEWAY = bool(_GATEWAY_BASE) and _GATEWAY_BASE not in (
+    'http://localhost:48080',
+    'http://127.0.0.1:48080',
+)
+if _USE_GATEWAY:
+    ALERT_HOOK_URL = f"{_GATEWAY_BASE}/admin-api/video/alert/hook"
+    FACE_MATCHING_PUBLISH_URL = f"{_GATEWAY_BASE}/admin-api/video/face/matching/publish"
+    PLATE_MATCHING_PUBLISH_URL = f"{_GATEWAY_BASE}/admin-api/video/plate/matching/publish"
 else:
     ALERT_HOOK_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/alert/hook"
     FACE_MATCHING_PUBLISH_URL = f"http://localhost:{VIDEO_SERVICE_PORT}/video/face/matching/publish"

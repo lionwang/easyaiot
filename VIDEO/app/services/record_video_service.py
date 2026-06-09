@@ -8,12 +8,14 @@ import io
 import logging
 import zipfile
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from flask import current_app
 from minio.error import S3Error
+from sqlalchemy import func
 
-from models import db, RecordSpace, RecordFile
+from models import db, RecordSpace, RecordFile, Alert
+from app.services.alert_service import _alert_to_dict
 from app.services.record_space_service import get_minio_client
 from app.services.space_file_metadata_service import (
     delete_record_files_metadata,
@@ -234,3 +236,301 @@ def cleanup_old_videos_by_days(space_id: int, days: int) -> Dict:
 def sync_record_videos_metadata(space_id: int) -> Dict:
     """从 MinIO 同步录像元数据到数据库"""
     return sync_record_files_from_minio(space_id)
+
+
+def _parse_day_range(date_str: str):
+    """解析 YYYY-MM-DD 为当日起止时间（与 event_time 一致的 naive 本地时间）。"""
+    day_start = datetime.strptime(date_str.strip(), '%Y-%m-%d')
+    day_end = day_start + timedelta(days=1) - timedelta(microseconds=1)
+    return day_start, day_end
+
+
+def _alert_time_naive(alert_time: datetime) -> datetime:
+    if alert_time is None:
+        return alert_time
+    if getattr(alert_time, 'tzinfo', None) is not None:
+        return alert_time.replace(tzinfo=None)
+    return alert_time
+
+
+def _match_alerts_to_segment(
+    alerts: List[Alert],
+    seg_start: datetime,
+    seg_end: datetime,
+    record_url: str,
+) -> List[dict]:
+    """将告警匹配到录像片段（时间窗重叠或 record_path 一致）。"""
+    matched = []
+    record_url = (record_url or '').strip()
+    for alert in alerts:
+        alert_naive = _alert_time_naive(alert.time)
+        in_window = alert_naive is not None and seg_start <= alert_naive <= seg_end
+        same_record = record_url and (alert.record_path or '').strip() == record_url
+        if in_window or same_record:
+            matched.append(_alert_to_dict(alert))
+    return matched
+
+
+# 相邻片段间隔 <= 该值（秒）则视为同一段连续录像
+SESSION_MERGE_GAP_SEC = 2
+
+
+def _merge_timeline_ranges(timeline: List[dict], gap_sec: int = SESSION_MERGE_GAP_SEC) -> List[dict]:
+    """合并时间轴上相邻的录像覆盖区间。"""
+    if not timeline:
+        return []
+    merged: List[dict] = []
+    current = {
+        'start_offset_sec': timeline[0]['start_offset_sec'],
+        'end_offset_sec': timeline[0]['end_offset_sec'],
+        'has_recording': True,
+        'has_alert': timeline[0].get('has_alert', False),
+        'alert_count': timeline[0].get('alert_count', 0),
+        'segment_ids': [timeline[0].get('segment_id')],
+    }
+    for item in timeline[1:]:
+        gap = item['start_offset_sec'] - current['end_offset_sec']
+        if gap <= gap_sec:
+            current['end_offset_sec'] = item['end_offset_sec']
+            current['has_alert'] = current['has_alert'] or item.get('has_alert', False)
+            current['alert_count'] = current.get('alert_count', 0) + item.get('alert_count', 0)
+            current['segment_ids'].append(item.get('segment_id'))
+        else:
+            merged.append(current)
+            current = {
+                'start_offset_sec': item['start_offset_sec'],
+                'end_offset_sec': item['end_offset_sec'],
+                'has_recording': True,
+                'has_alert': item.get('has_alert', False),
+                'alert_count': item.get('alert_count', 0),
+                'segment_ids': [item.get('segment_id')],
+            }
+    merged.append(current)
+    return merged
+
+
+def _build_session_groups(segments: List[dict], gap_sec: int = SESSION_MERGE_GAP_SEC) -> List[dict]:
+    """将相邻片段合并为连续录像会话（供左侧树与会话播放使用）。"""
+    if not segments:
+        return []
+    groups: List[dict] = []
+    current: Optional[dict] = None
+    for seg in segments:
+        if current is None:
+            current = {
+                'group_id': len(groups),
+                'start_time': seg.get('start_time'),
+                'end_time': seg.get('end_time'),
+                'start_offset_sec': seg.get('start_offset_sec', 0),
+                'end_offset_sec': seg.get('end_offset_sec', 0),
+                'segment_count': 1,
+                'has_alert': seg.get('has_alert', False),
+                'alert_count': seg.get('alert_count', 0),
+                'segments': [seg],
+            }
+        else:
+            gap = seg.get('start_offset_sec', 0) - current['end_offset_sec']
+            if gap <= gap_sec:
+                current['end_offset_sec'] = seg.get('end_offset_sec', 0)
+                current['end_time'] = seg.get('end_time')
+                current['segment_count'] += 1
+                current['has_alert'] = current['has_alert'] or seg.get('has_alert', False)
+                current['alert_count'] += seg.get('alert_count', 0)
+                current['segments'].append(seg)
+            else:
+                groups.append(current)
+                current = {
+                    'group_id': len(groups),
+                    'start_time': seg.get('start_time'),
+                    'end_time': seg.get('end_time'),
+                    'start_offset_sec': seg.get('start_offset_sec', 0),
+                    'end_offset_sec': seg.get('end_offset_sec', 0),
+                    'segment_count': 1,
+                    'has_alert': seg.get('has_alert', False),
+                    'alert_count': seg.get('alert_count', 0),
+                    'segments': [seg],
+                }
+    if current is not None:
+        groups.append(current)
+    return groups
+
+
+def find_segment_for_alert(device_id: str, alert_id: int) -> Optional[dict]:
+    """根据告警 ID 定位所属录像片段及空间。"""
+    alert = Alert.query.get(alert_id)
+    if not alert or alert.device_id != device_id:
+        return None
+
+    space = RecordSpace.query.filter_by(device_id=device_id).first()
+    if not space:
+        return None
+
+    alert_naive = _alert_time_naive(alert.time)
+    if not alert_naive:
+        return None
+
+    date_str = alert_naive.strftime('%Y-%m-%d')
+    day_start, day_end = _parse_day_range(date_str)
+
+    records = (
+        RecordFile.query.filter(
+            RecordFile.space_id == space.id,
+            RecordFile.device_id == device_id,
+            RecordFile.event_time >= day_start,
+            RecordFile.event_time <= day_end,
+        )
+        .order_by(RecordFile.event_time.asc())
+        .all()
+    )
+
+    record_url = (alert.record_path or '').strip()
+    matched_seg = None
+    for record in records:
+        duration = int(record.duration or 30)
+        seg_start = record.event_time
+        seg_end = seg_start + timedelta(seconds=duration)
+        same_record = record_url and (record.url or '').strip() == record_url
+        in_window = seg_start <= alert_naive <= seg_end
+        if same_record or in_window:
+            matched_seg = record
+            break
+
+    if not matched_seg:
+        return {
+            'space_id': space.id,
+            'device_id': device_id,
+            'date': date_str,
+            'alert_id': alert_id,
+            'segment': None,
+        }
+
+    duration = int(matched_seg.duration or 30)
+    seg_start = matched_seg.event_time
+    seg_end = seg_start + timedelta(seconds=duration)
+    start_offset = max(0, int((seg_start - day_start).total_seconds()))
+
+    return {
+        'space_id': space.id,
+        'device_id': device_id,
+        'date': date_str,
+        'alert_id': alert_id,
+        'segment': {
+            **matched_seg.to_list_item(),
+            'start_time': seg_start.isoformat() if seg_start else None,
+            'end_time': seg_end.isoformat() if seg_end else None,
+            'start_offset_sec': start_offset,
+            'end_offset_sec': min(86400, start_offset + duration),
+        },
+    }
+
+
+def list_record_video_dates(space_id: int, device_id: Optional[str] = None) -> List[dict]:
+    """列出有录像的日期及片段数量。"""
+    record_space = RecordSpace.query.get_or_404(space_id)
+    effective_device_id = device_id or record_space.device_id
+
+    query = db.session.query(
+        func.date(RecordFile.event_time).label('record_date'),
+        func.count(RecordFile.id).label('segment_count'),
+    ).filter(RecordFile.space_id == space_id)
+
+    if effective_device_id:
+        query = query.filter(RecordFile.device_id == effective_device_id)
+
+    rows = (
+        query.group_by(func.date(RecordFile.event_time))
+        .order_by(func.date(RecordFile.event_time).desc())
+        .all()
+    )
+    return [
+        {
+            'date': row.record_date.strftime('%Y-%m-%d') if hasattr(row.record_date, 'strftime') else str(row.record_date),
+            'segment_count': int(row.segment_count or 0),
+        }
+        for row in rows
+    ]
+
+
+def list_record_videos_day_detail(
+    space_id: int,
+    date_str: str,
+    device_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """获取指定日期的全部录像片段、时间轴覆盖及告警关联。"""
+    record_space = RecordSpace.query.get_or_404(space_id)
+    effective_device_id = device_id or record_space.device_id
+    day_start, day_end = _parse_day_range(date_str)
+
+    query = RecordFile.query.filter(
+        RecordFile.space_id == space_id,
+        RecordFile.event_time >= day_start,
+        RecordFile.event_time <= day_end,
+    )
+    if effective_device_id:
+        query = query.filter(RecordFile.device_id == effective_device_id)
+
+    records = query.order_by(RecordFile.event_time.asc()).all()
+
+    alert_query = Alert.query.filter(
+        Alert.time >= day_start,
+        Alert.time <= day_end,
+    )
+    if effective_device_id:
+        alert_query = alert_query.filter(Alert.device_id == effective_device_id)
+    day_alerts = alert_query.order_by(Alert.time.asc()).all()
+
+    segments: List[dict] = []
+    timeline: List[dict] = []
+    total_duration = 0
+    alert_segment_count = 0
+
+    for record in records:
+        duration = int(record.duration or 30)
+        seg_start = record.event_time
+        seg_end = seg_start + timedelta(seconds=duration)
+        matched_alerts = _match_alerts_to_segment(day_alerts, seg_start, seg_end, record.url)
+        has_alert = len(matched_alerts) > 0
+        if has_alert:
+            alert_segment_count += 1
+        total_duration += duration
+
+        start_offset = max(0, int((seg_start - day_start).total_seconds()))
+        end_offset = min(86400, start_offset + duration)
+
+        segments.append({
+            **record.to_list_item(),
+            'start_time': seg_start.isoformat() if seg_start else None,
+            'end_time': seg_end.isoformat() if seg_end else None,
+            'has_alert': has_alert,
+            'alert_count': len(matched_alerts),
+            'alerts': matched_alerts,
+            'start_offset_sec': start_offset,
+            'end_offset_sec': end_offset,
+        })
+        timeline.append({
+            'start_offset_sec': start_offset,
+            'end_offset_sec': end_offset,
+            'has_recording': True,
+            'has_alert': has_alert,
+            'segment_id': record.id,
+            'alert_count': len(matched_alerts),
+        })
+
+    timeline_merged = _merge_timeline_ranges(timeline)
+    session_groups = _build_session_groups(segments)
+
+    return {
+        'date': date_str,
+        'device_id': effective_device_id,
+        'space_id': space_id,
+        'segments': segments,
+        'timeline': timeline,
+        'timeline_merged': timeline_merged,
+        'session_groups': session_groups,
+        'total_segments': len(segments),
+        'total_sessions': len(session_groups),
+        'total_duration_sec': total_duration,
+        'alert_segment_count': alert_segment_count,
+        'total_alert_count': len(day_alerts),
+        'alerts': [_alert_to_dict(a) for a in day_alerts],
+    }

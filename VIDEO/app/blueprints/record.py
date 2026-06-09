@@ -15,7 +15,8 @@ from app.services.record_space_service import (
 )
 from app.services.record_video_service import (
     list_record_videos, delete_record_videos, get_record_video, cleanup_old_videos_by_days,
-    sync_record_videos_metadata,
+    sync_record_videos_metadata, list_record_video_dates, list_record_videos_day_detail,
+    find_segment_for_alert,
 )
 
 record_bp = Blueprint('record', __name__)
@@ -155,6 +156,65 @@ def sync_spaces_minio():
 
 
 # ====================== 监控录像管理接口 ======================
+@record_bp.route('/space/<int:space_id>/videos/dates', methods=['GET'])
+def list_video_dates(space_id):
+    """列出有录像的日期"""
+    try:
+        device_id = request.args.get('device_id')
+        dates = list_record_video_dates(space_id, device_id)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': dates,
+        })
+    except Exception as e:
+        logger.error(f'获取录像日期列表失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@record_bp.route('/space/<int:space_id>/videos/day', methods=['GET'])
+def list_videos_by_day(space_id):
+    """获取指定日期的录像片段详情（含时间轴与告警关联）"""
+    try:
+        date_str = request.args.get('date', '').strip()
+        if not date_str:
+            return jsonify({'code': 400, 'msg': 'date 参数不能为空（格式 YYYY-MM-DD）'}), 400
+        device_id = request.args.get('device_id')
+        result = list_record_videos_day_detail(space_id, date_str, device_id)
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'获取日录像详情失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@record_bp.route('/space/device/<device_id>/resolve-alert', methods=['GET'])
+def resolve_alert_segment(device_id):
+    """根据告警 ID 定位录像片段（供告警页跳转回放）"""
+    try:
+        alert_id = request.args.get('alert_id') or request.args.get('alertId')
+        if not alert_id:
+            return jsonify({'code': 400, 'msg': 'alert_id 参数不能为空'}), 400
+        result = find_segment_for_alert(device_id, int(alert_id))
+        if not result:
+            return jsonify({'code': 404, 'msg': '未找到告警或关联录像空间'}), 404
+        return jsonify({
+            'code': 0,
+            'msg': 'success',
+            'data': result,
+        })
+    except ValueError as e:
+        return jsonify({'code': 400, 'msg': str(e)}), 400
+    except Exception as e:
+        logger.error(f'定位告警录像片段失败: {str(e)}', exc_info=True)
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
 @record_bp.route('/space/<int:space_id>/videos', methods=['GET'])
 def list_videos(space_id):
     """获取监控录像列表"""
