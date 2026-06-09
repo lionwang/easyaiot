@@ -85,6 +85,7 @@ export const deleteRecordSpace = (space_id: number) => {
 
 // ====================== 监控录像管理接口 ======================
 export interface RecordVideo {
+  id?: number;
   object_name: string;
   filename: string;
   size: number;
@@ -110,6 +111,9 @@ export const getRecordVideoList = (space_id: number, params: {
   device_id?: string;
   pageNo?: number;
   pageSize?: number;
+  search?: string;
+  startTime?: string;
+  endTime?: string;
 }) => {
   return commonApi('get', `${RECORD_PREFIX}/space/${space_id}/videos`, params);
 };
@@ -126,12 +130,5 @@ export const deleteRecordVideos = (space_id: number, object_names: string[]) => 
  */
 export const cleanupRecordVideos = (space_id: number, days: number) => {
   return commonApi('post', `${RECORD_PREFIX}/space/${space_id}/videos/cleanup`, { days });
-};
-
-/**
- * 同步所有监控录像空间到Minio
- */
-export const syncRecordSpacesToMinio = () => {
-  return commonApi('post', `${RECORD_PREFIX}/space/sync/minio`);
 };
 

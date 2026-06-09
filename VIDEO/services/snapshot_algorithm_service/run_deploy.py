@@ -524,6 +524,23 @@ def upload_frame_to_snap_space(device_id: str, frame: np.ndarray) -> bool:
             length=len(data),
             content_type='image/jpeg',
         )
+        try:
+            from app.services.space_file_metadata_service import upsert_snap_image
+            _app = get_flask_app()
+            with _app.app_context():
+                from models import SnapSpace
+                snap_space = SnapSpace.query.filter_by(device_id=device_id).first()
+                if snap_space:
+                    upsert_snap_image(
+                        space_id=snap_space.id,
+                        device_id=device_id,
+                        object_name=object_name,
+                        bucket_name=bucket_name,
+                        file_size=len(data),
+                        source='algorithm',
+                    )
+        except Exception as meta_err:
+            logger.debug(f"设备 {device_id} 写入抓拍元数据失败: {meta_err}")
         logger.info(f"📷 设备 {device_id} 已上传抓拍图: {bucket_name}/{object_name}")
         return True
     except Exception as e:

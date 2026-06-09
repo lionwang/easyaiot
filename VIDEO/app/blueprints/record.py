@@ -14,7 +14,8 @@ from app.services.record_space_service import (
     get_record_space, list_record_spaces, get_record_space_by_device_id, sync_spaces_to_minio
 )
 from app.services.record_video_service import (
-    list_record_videos, delete_record_videos, get_record_video, cleanup_old_videos_by_days
+    list_record_videos, delete_record_videos, get_record_video, cleanup_old_videos_by_days,
+    sync_record_videos_metadata,
 )
 
 record_bp = Blueprint('record', __name__)
@@ -161,8 +162,15 @@ def list_videos(space_id):
         device_id = request.args.get('device_id')
         page_no = int(request.args.get('pageNo', 1))
         page_size = int(request.args.get('pageSize', 20))
-        
-        result = list_record_videos(space_id, device_id, page_no, page_size)
+        search = request.args.get('search', '').strip() or None
+        start_time = request.args.get('startTime')
+        end_time = request.args.get('endTime')
+
+        from datetime import datetime
+        start_dt = datetime.fromisoformat(start_time) if start_time else None
+        end_dt = datetime.fromisoformat(end_time) if end_time else None
+
+        result = list_record_videos(space_id, device_id, page_no, page_size, search, start_dt, end_dt)
         return jsonify({
             'code': 0,
             'msg': 'success',
@@ -219,6 +227,23 @@ def delete_videos(space_id):
     except Exception as e:
         logger.error(f'批量删除监控录像失败: {str(e)}', exc_info=True)
         db.session.rollback()
+        return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
+
+
+@record_bp.route('/space/<int:space_id>/videos/sync', methods=['POST'])
+def sync_videos_metadata(space_id):
+    """从 MinIO 同步录像元数据到数据库（历史数据回填）"""
+    try:
+        result = sync_record_videos_metadata(space_id)
+        return jsonify({
+            'code': 0,
+            'msg': '同步完成',
+            'data': result
+        })
+    except RuntimeError as e:
+        return jsonify({'code': 500, 'msg': str(e)}), 500
+    except Exception as e:
+        logger.error(f'同步录像元数据失败: {str(e)}', exc_info=True)
         return jsonify({'code': 500, 'msg': f'服务器内部错误: {str(e)}'}), 500
 
 
