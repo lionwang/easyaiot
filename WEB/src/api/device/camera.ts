@@ -198,6 +198,11 @@ export const getDeviceInfo = (device_id: string, params?: { name?: string }) => 
   return commonApi('get', cameraDevicePath(device_id), params || {});
 };
 
+/** 确保设备已有关联的抓拍空间与录像空间（缺失则自动创建） */
+export const ensureDeviceSpaces = (device_id: string) => {
+  return commonApi('post', `${cameraDevicePath(device_id)}/ensure-spaces`, {}, {}, false);
+};
+
 /** 获取设备坐标（地图选点弹窗；国标虚拟通道不存在时后端按需入库） */
 export const getDeviceLocation = (device_id: string, params?: { name?: string }) => {
   return commonApi('get', `${cameraDevicePath(device_id)}/location`, params || {}, {}, false);
@@ -628,6 +633,8 @@ export interface DeviceDirectory {
   sort_order: number;
   device_count?: number;
   is_default?: boolean;
+  snap_save_time?: number;
+  record_save_time?: number;
   children?: DeviceDirectory[];
   created_at?: string;
   updated_at?: string;
@@ -666,6 +673,8 @@ export interface MonitorTreeDirectoryNode {
   sort_order?: number;
   device_count?: number;
   is_default?: boolean;
+  snap_save_time?: number;
+  record_save_time?: number;
   children: MonitorTreeDirectoryNode[];
   devices: MonitorTreeDeviceNode[];
 }
@@ -815,6 +824,8 @@ export const updateDirectory = (directory_id: number, data: {
   parent_id?: number | null;
   description?: string;
   sort_order?: number;
+  snap_save_time?: number;
+  record_save_time?: number;
 }) => {
   return commonApi('put', `${CAMERA_PREFIX}/directory/${directory_id}`, data);
 };
