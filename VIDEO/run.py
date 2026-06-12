@@ -1066,7 +1066,8 @@ def create_app():
                 janitor_interval = int(os.getenv('JANITOR_INTERVAL_SECONDS', '60'))
 
                 def media_janitor_wrapper():
-                    return run_janitor_cycle()
+                    with app.app_context():
+                        return run_janitor_cycle()
 
                 scheduler.add_job(
                     media_janitor_wrapper,
