@@ -63,6 +63,7 @@ export interface ComputeNodeVO {
   diskTotalBytes?: number;
   activeTasks?: number;
   gpuInfo?: string;
+  isPlatform?: boolean;
   createTime?: string;
   updateTime?: string;
 }

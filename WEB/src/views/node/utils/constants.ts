@@ -77,6 +77,8 @@ export const NODE_TERM = {
   addNode: '添加节点',
   viewDetail: '详情',
   attentionNodes: '需关注节点',
+  controlPlaneNode: '控制面节点',
+  controlPlaneNodeReadonly: '控制面节点仅可查看，不可编辑',
 } as const;
 
 export const NODE_STATUS_MAP: Record<string, { text: string; color: string }> = {
@@ -760,9 +762,8 @@ cd ${AGENT_INSTALL_DIR}
 sudo tee agent.env > /dev/null <<'EOF'
 ${env}
 EOF
-sudo bash install.sh
-sudo systemctl enable --now easyaiot-node-agent
-sudo systemctl status easyaiot-node-agent --no-pager`;
+sudo bash install.sh install
+sudo bash install.sh status`;
 }
 
 /** 一键部署脚本（需先完成 rsync 同步） */

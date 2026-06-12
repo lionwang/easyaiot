@@ -539,8 +539,13 @@ def load_task_config():
                     logger.warning(f"设备 {device.id} 没有配置源地址，跳过")
                     continue
                 
-                # 获取RTMP输出流地址
-                rtmp_url = device.rtmp_stream
+                # 获取RTMP输出流地址；远程分片在节点本机 SRS 推流（POD_IP 由 launcher 注入）
+                pod_ip = os.getenv('POD_IP', '').strip()
+                if pod_ip:
+                    rtmp_port = os.getenv('SRS_RTMP_PORT', '1935').strip() or '1935'
+                    rtmp_url = f'rtmp://{pod_ip}:{rtmp_port}/live/{device.id}'
+                else:
+                    rtmp_url = device.rtmp_stream
                 if not rtmp_url:
                     logger.warning(f"设备 {device.id} 没有配置RTMP输出地址，跳过")
                     continue

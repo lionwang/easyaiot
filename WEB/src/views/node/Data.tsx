@@ -11,7 +11,12 @@ import {
   NODE_TERM,
   formatGpuSummary,
 } from './utils/constants';
-import { formatSshUsername, renderNodeRoleBadge, renderNodeStatusBadge } from './utils/nodeDisplay';
+import {
+  formatSshUsername,
+  renderNodeNameWithPlatformBadge,
+  renderNodeRoleBadge,
+  renderNodeStatusBadge,
+} from './utils/nodeDisplay';
 
 export { NODE_ROLE_MAP, NODE_STATUS_MAP };
 
@@ -19,8 +24,9 @@ export const columns: BasicColumn[] = [
   {
     title: '节点名称',
     dataIndex: 'name',
-    width: 140,
+    width: 180,
     ellipsis: true,
+    customRender: ({ text, record }) => renderNodeNameWithPlatformBadge(text, record),
   },
   {
     title: '主机',

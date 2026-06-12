@@ -10,6 +10,8 @@ public interface ErrorCodeConstants {
     ErrorCode COMPUTE_NODE_NOT_EXISTS = new ErrorCode(1_005_000_000, "服务器节点不存在");
     ErrorCode COMPUTE_NODE_HOST_EXISTS = new ErrorCode(1_005_000_001, "该主机地址已存在");
     ErrorCode COMPUTE_NODE_HAS_WORKLOAD = new ErrorCode(1_005_000_002, "节点上仍有运行中的工作负载，无法删除");
+    ErrorCode COMPUTE_NODE_PLATFORM_DELETE_FORBIDDEN = new ErrorCode(1_005_000_005, "控制面节点不可删除");
+    ErrorCode COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN = new ErrorCode(1_005_000_006, "控制面节点为只读，不可修改");
     ErrorCode COMPUTE_NODE_OFFLINE = new ErrorCode(1_005_000_003, "服务器节点离线");
     ErrorCode COMPUTE_NODE_NOT_PENDING = new ErrorCode(1_005_000_004, "节点已完成纳管或不在待纳管状态");
     ErrorCode SSH_CREDENTIAL_NOT_EXISTS = new ErrorCode(1_005_001_000, "SSH 凭据不存在");

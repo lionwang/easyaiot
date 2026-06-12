@@ -21,12 +21,14 @@ import com.basiclab.iot.node.domain.vo.NodePortCheckRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendPointRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendReqVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendRespVO;
+import com.basiclab.iot.node.domain.vo.PlatformAgentBootstrapRespVO;
 import com.basiclab.iot.node.domain.vo.NodeMetricTrendSeriesRespVO;
 import com.basiclab.iot.node.enums.NodeRoleEnum;
 import com.basiclab.iot.node.enums.NodeStatusEnum;
 import com.basiclab.iot.node.service.ComputeNodeService;
 import com.basiclab.iot.node.util.AgentDeployUtil;
 import com.basiclab.iot.node.util.CredentialEncryptUtil;
+import com.basiclab.iot.node.util.HostIpUtil;
 import com.basiclab.iot.node.util.RemotePortCheckUtil;
 import com.basiclab.iot.node.util.SshClientUtil;
 import com.basiclab.iot.node.util.SshSessionHelper;
@@ -69,6 +71,8 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     private static final int DEFAULT_AGENT_PORT = 9100;
     private static final int DEPLOY_TIMEOUT_MS = 300000;
     private static final int EXPORT_PIP_WHEELS_TIMEOUT_MS = 600000;
+    private static final String PLATFORM_CAPABILITY_KEY = "platform";
+    private static final String PLATFORM_NODE_NAME = "控制面节点";
 
     @Resource
     private ComputeNodeMapper computeNodeMapper;
@@ -116,6 +120,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Transactional(rollbackFor = Exception.class)
     public void updateNode(ComputeNodeSaveReqVO updateReqVO) {
         ComputeNodeDO existing = validateExists(updateReqVO.getId());
+        if (isPlatformNode(existing)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         ComputeNodeDO other = computeNodeMapper.selectByHost(updateReqVO.getHost());
         if (other != null && !other.getId().equals(updateReqVO.getId())) {
             throw exception(COMPUTE_NODE_HOST_EXISTS);
@@ -133,7 +140,10 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteNode(Long id) {
-        validateExists(id);
+        ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_DELETE_FORBIDDEN);
+        }
         if (nodeWorkloadBindingMapper.countRunningByNodeId(id) > 0) {
             throw exception(COMPUTE_NODE_HAS_WORKLOAD);
         }
@@ -152,17 +162,94 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
     @Override
     public PageResult<ComputeNodeRespVO> getNodePage(ComputeNodePageReqVO pageReqVO) {
+        ensurePlatformNode();
         PageResult<ComputeNodeDO> pageResult = computeNodeMapper.selectPage(pageReqVO);
         List<ComputeNodeRespVO> list = pageResult.getList().stream()
                 .map(node -> toRespVO(node, false))
+                .sorted(platformNodeFirstComparator())
                 .collect(Collectors.toList());
         return new PageResult<>(list, pageResult.getTotal());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void ensurePlatformNode() {
+        String hostIp = HostIpUtil.detectHostIp();
+        ComputeNodeDO platformNode = computeNodeMapper.selectPlatformNode();
+        if (platformNode != null) {
+            boolean changed = false;
+            if (!hostIp.equals(platformNode.getHost())) {
+                ComputeNodeDO conflict = computeNodeMapper.selectByHost(hostIp);
+                if (conflict == null || conflict.getId().equals(platformNode.getId())) {
+                    platformNode.setHost(hostIp);
+                    changed = true;
+                }
+            }
+            Map<String, Boolean> caps = platformNode.getCapabilities() != null
+                    ? new HashMap<>(platformNode.getCapabilities()) : defaultCapabilities(platformNode.getNodeRole());
+            if (!Boolean.TRUE.equals(caps.get(PLATFORM_CAPABILITY_KEY))) {
+                caps.put(PLATFORM_CAPABILITY_KEY, true);
+                platformNode.setCapabilities(caps);
+                changed = true;
+            }
+            if (changed) {
+                computeNodeMapper.updateById(platformNode);
+            }
+            return;
+        }
+
+        ComputeNodeDO byHost = computeNodeMapper.selectByHost(hostIp);
+        if (byHost != null) {
+            Map<String, Boolean> caps = byHost.getCapabilities() != null
+                    ? new HashMap<>(byHost.getCapabilities())
+                    : defaultCapabilities(byHost.getNodeRole());
+            caps.put(PLATFORM_CAPABILITY_KEY, true);
+            byHost.setCapabilities(caps);
+            computeNodeMapper.updateById(byHost);
+            return;
+        }
+
+        ComputeNodeDO node = new ComputeNodeDO();
+        node.setName(PLATFORM_NODE_NAME);
+        node.setHost(hostIp);
+        node.setNodeRole(NodeRoleEnum.HYBRID.getRole());
+        node.setStatus(NodeStatusEnum.ONLINE.getStatus());
+        node.setSshPort(DEFAULT_SSH_PORT);
+        node.setAgentPort(DEFAULT_AGENT_PORT);
+        node.setWeight(100);
+        node.setMaxGpuCount(0);
+        node.setMaxTaskCount(50);
+        Map<String, Boolean> caps = defaultCapabilities(NodeRoleEnum.HYBRID.getRole());
+        caps.put(PLATFORM_CAPABILITY_KEY, true);
+        node.setCapabilities(caps);
+        node.setAgentToken(IdUtil.fastSimpleUUID());
+        node.setRemark("平台控制面宿主机，自动纳管");
+        computeNodeMapper.insert(node);
+        log.info("已自动纳管控制面节点: id={}, host={}", node.getId(), node.getHost());
+    }
+
+    @Override
+    public PlatformAgentBootstrapRespVO getPlatformAgentBootstrap() {
+        ensurePlatformNode();
+        ComputeNodeDO node = computeNodeMapper.selectPlatformNode();
+        if (node == null) {
+            throw exception(COMPUTE_NODE_NOT_EXISTS);
+        }
+        PlatformAgentBootstrapRespVO resp = new PlatformAgentBootstrapRespVO();
+        resp.setNodeId(node.getId());
+        resp.setAgentToken(node.getAgentToken());
+        resp.setAgentPort(defaultPort(node.getAgentPort(), DEFAULT_AGENT_PORT));
+        resp.setControlPlaneUrl(resolveControlPlaneUrl(null));
+        return resp;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean testSsh(Long id) {
         ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         NodeSshCredentialDO credential = nodeSshCredentialMapper.selectByNodeId(id);
         if (credential == null) {
             throw exception(SSH_CREDENTIAL_NOT_EXISTS);
@@ -190,6 +277,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Transactional(rollbackFor = Exception.class)
     public String resetAgentToken(Long id) {
         ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         String token = IdUtil.fastSimpleUUID();
         node.setAgentToken(token);
         computeNodeMapper.updateById(node);
@@ -208,6 +298,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Override
     public NodeMediaRemoteDeployRespVO deployAgentBySsh(Long nodeId, String controlPlaneUrlOverride) {
         ComputeNodeDO node = validateExists(nodeId);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         NodeSshCredentialDO credential = nodeSshCredentialMapper.selectByNodeId(nodeId);
         if (credential == null) {
             throw exception(SSH_CREDENTIAL_NOT_EXISTS);
@@ -469,6 +562,9 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     @Transactional(rollbackFor = Exception.class)
     public void setMaintenance(Long id, boolean enabled) {
         ComputeNodeDO node = validateExists(id);
+        if (isPlatformNode(node)) {
+            throw exception(COMPUTE_NODE_PLATFORM_UPDATE_FORBIDDEN);
+        }
         node.setStatus(enabled ? NodeStatusEnum.MAINTENANCE.getStatus() : NodeStatusEnum.OFFLINE.getStatus());
         computeNodeMapper.updateById(node);
     }
@@ -743,6 +839,7 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
 
     private ComputeNodeRespVO toRespVO(ComputeNodeDO node, boolean exposeToken) {
         ComputeNodeRespVO resp = BeanUtils.toBean(node, ComputeNodeRespVO.class);
+        resp.setIsPlatform(isPlatformNode(node));
         if (exposeToken) {
             resp.setAgentToken(node.getAgentToken());
         }
@@ -783,6 +880,16 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
         return node.getSshPort() != null && node.getSshPort() > 0 ? node.getSshPort() : DEFAULT_SSH_PORT;
     }
 
+    static boolean isPlatformNode(ComputeNodeDO node) {
+        return node != null
+                && node.getCapabilities() != null
+                && Boolean.TRUE.equals(node.getCapabilities().get(PLATFORM_CAPABILITY_KEY));
+    }
+
+    private Comparator<ComputeNodeRespVO> platformNodeFirstComparator() {
+        return Comparator.comparing((ComputeNodeRespVO node) -> !Boolean.TRUE.equals(node.getIsPlatform()));
+    }
+
     private Map<String, Boolean> defaultCapabilities(String nodeRole) {
         Map<String, Boolean> caps = new HashMap<>();
         if (NodeRoleEnum.COMPUTE.getRole().equals(nodeRole) || NodeRoleEnum.HYBRID.getRole().equals(nodeRole)) {
@@ -815,9 +922,13 @@ public class ComputeNodeServiceImpl implements ComputeNodeService {
     }
 
     private String resolveAgentSource() {
+        File installDir = new File("/opt/easyaiot/node-agent");
+        if (new File(installDir, "run_agent.py").isFile()) {
+            return installDir.getAbsolutePath();
+        }
         if (agentSourcePath != null && !agentSourcePath.isBlank()) {
             File dir = new File(agentSourcePath);
-            if (dir.isDirectory()) {
+            if (new File(dir, "run_agent.py").isFile()) {
                 return dir.getAbsolutePath();
             }
         }

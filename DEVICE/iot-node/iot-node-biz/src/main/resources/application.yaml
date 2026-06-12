@@ -73,6 +73,7 @@ iot:
     ignore-urls:
       - /node/agent/**
       - /node/ws/**
+      - /node/platform-agent-bootstrap
     ignore-tables:
       - compute_node
       - node_ssh_credential

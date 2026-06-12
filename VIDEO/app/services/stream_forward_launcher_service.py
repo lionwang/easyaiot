@@ -29,10 +29,131 @@ _running_daemons: Dict[int, StreamForwardDaemon] = {}
 _daemons_lock = threading.Lock()
 _starting_tasks: Dict[int, threading.Lock] = {}
 _starting_lock = threading.Lock()
+_local_shard_processes: Dict[str, subprocess.Popen] = {}
+_local_shard_lock = threading.Lock()
 
 
 def _get_video_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _auto_include_local() -> bool:
+    """auto 调度时是否将部分分片留在本机（与远程节点共同参与负载）。"""
+    return os.getenv('STREAM_FORWARD_AUTO_INCLUDE_LOCAL', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+
+
+def _should_deploy_shard_locally(task: StreamForwardTask, shard_index: int, total_shards: int) -> bool:
+    policy = getattr(task, 'schedule_policy', None) or 'local'
+    if policy != 'auto' or not _auto_include_local():
+        return False
+    if total_shards <= 1:
+        return True
+    return shard_index % 2 == 0
+
+
+def _stop_local_shard(workload_id: str) -> None:
+    with _local_shard_lock:
+        proc = _local_shard_processes.pop(workload_id, None)
+    if not proc:
+        return
+    try:
+        if proc.poll() is None:
+            if os.name != 'nt':
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            else:
+                proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                if os.name != 'nt':
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
+    except (ProcessLookupError, OSError) as e:
+        logger.warning('停止本机推流转发分片失败 workload_id=%s: %s', workload_id, e)
+
+
+def _stop_all_local_shards(task: StreamForwardTask) -> None:
+    deployments = _parse_device_deployments(task)
+    for dep in deployments:
+        if dep.get('local'):
+            workload_id = dep.get('workload_id')
+            if workload_id:
+                _stop_local_shard(str(workload_id))
+
+
+def _deploy_shard_locally(
+    task_id: int,
+    task: StreamForwardTask,
+    shard_index: int,
+    device_ids: List[str],
+) -> Dict[str, Any]:
+    from app.services.camera_service import _get_host_ip_for_stream_urls
+    from app.services.stream_url_sync_service import sync_devices_for_deployment
+    import sys
+
+    workload_id = _workload_id(task_id, shard_index, device_ids)
+    host = _get_host_ip_for_stream_urls()
+    video_root = _get_video_root()
+    log_dir = os.path.join(
+        video_root,
+        'logs',
+        f'stream_forward_task_{task_id}',
+        _shard_log_suffix(shard_index, device_ids),
+    )
+    os.makedirs(log_dir, exist_ok=True)
+
+    _stop_local_shard(workload_id)
+    env = os.environ.copy()
+    env.update(_build_stream_forward_deploy_env(task_id, log_dir, host, device_ids, workload_id))
+    env['VIDEO_ROOT'] = video_root
+    deploy_script = os.path.join(video_root, 'services', 'stream_forward_service', 'run_deploy.py')
+
+    proc = subprocess.Popen(
+        [sys.executable, deploy_script],
+        cwd=video_root,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=os.setsid if os.name != 'nt' else None,
+    )
+
+    with _local_shard_lock:
+        _local_shard_processes[workload_id] = proc
+
+    deployment = {
+        'device_ids': device_ids,
+        'node_id': None,
+        'host': host,
+        'workload_id': workload_id,
+        'pid': proc.pid,
+        'log_dir': log_dir,
+        'local': True,
+    }
+    try:
+        sync_devices_for_deployment(deployment, commit=False)
+    except Exception as e:
+        logger.warning('本机分片流地址同步失败 task_id=%s: %s', task_id, e)
+
+    logger.info(
+        '推流转发分片本机部署成功 task_id=%s workload_id=%s host=%s devices=%s pid=%s',
+        task_id, workload_id, host, device_ids, proc.pid,
+    )
+    return deployment
+
+
+def _deploy_shard_for_schedule(
+    task_id: int,
+    task: StreamForwardTask,
+    shard_index: int,
+    device_ids: List[str],
+    total_shards: int,
+) -> Dict[str, Any]:
+    if _should_deploy_shard_locally(task, shard_index, total_shards):
+        return _deploy_shard_locally(task_id, task, shard_index, device_ids)
+    return _deploy_shard_on_remote_node(task_id, task, shard_index, device_ids)
 
 
 def _use_remote_deploy(task: StreamForwardTask) -> bool:
@@ -240,7 +361,7 @@ def _deploy_shard_with_workload_id(
         '推流转发分片远程部署成功 task_id=%s workload_id=%s node_id=%s host=%s devices=%s pid=%s',
         task_id, workload_id, node_id, host, device_ids, result.get('pid'),
     )
-    return {
+    deployment = {
         'device_ids': device_ids,
         'node_id': node_id,
         'host': host,
@@ -248,6 +369,12 @@ def _deploy_shard_with_workload_id(
         'pid': result.get('pid'),
         'log_dir': log_dir,
     }
+    try:
+        from app.services.stream_url_sync_service import sync_devices_for_deployment
+        sync_devices_for_deployment(deployment, commit=False)
+    except Exception as e:
+        logger.warning('远程分片流地址同步失败 task_id=%s: %s', task_id, e)
+    return deployment
 
 
 def _deploy_shard_on_remote_node(
@@ -393,7 +520,11 @@ def _deploy_task_on_remote_node(task_id: int, task: StreamForwardTask) -> Tuple[
 
         for shard_index, shard_device_ids in enumerate(shards):
             try:
-                deployments.append(_deploy_shard_on_remote_node(task_id, task, shard_index, shard_device_ids))
+                deployments.append(
+                    _deploy_shard_for_schedule(
+                        task_id, task, shard_index, shard_device_ids, len(shards),
+                    )
+                )
             except Exception as e:
                 logger.error(
                     '推流转发分片部署失败 task_id=%s devices=%s: %s',
@@ -465,6 +596,12 @@ def _deploy_task_on_remote_node(task_id: int, task: StreamForwardTask) -> Tuple[
         'pid': result.get('pid'),
         'log_dir': log_dir,
     }]
+    try:
+        from app.services.stream_url_sync_service import sync_devices_for_deployment
+        for dep in deployment:
+            sync_devices_for_deployment(dep, commit=False)
+    except Exception as e:
+        logger.warning('推流转发任务流地址同步失败 task_id=%s: %s', task_id, e)
     _apply_task_service_fields_from_deployments(task, deployment)
     task.node_id = node_id
     db.session.commit()
@@ -623,6 +760,7 @@ def stop_stream_forward_task(task_id: int):
     was_remote = bool(task and _task_has_active_remote_deployments(task))
     if was_remote and task:
         _stop_all_remote_deployments(task)
+        _stop_all_local_shards(task)
         _apply_task_service_fields_from_deployments(task, [])
         db.session.commit()
 
@@ -707,7 +845,9 @@ def rebalance_stream_forward_task(task_id: int) -> bool:
         if dep_devices & removed_ids:
             node_id = dep.get('node_id')
             workload_id = dep.get('workload_id')
-            if node_id and workload_id:
+            if dep.get('local') and workload_id:
+                _stop_local_shard(str(workload_id))
+            elif node_id and workload_id:
                 _stop_remote_workload(int(node_id), str(workload_id))
             continue
         kept_deployments.append(dep)
@@ -719,7 +859,9 @@ def rebalance_stream_forward_task(task_id: int) -> bool:
         for shard_device_ids in shards:
             try:
                 kept_deployments.append(
-                    _deploy_shard_on_remote_node(task_id, task, shard_index, shard_device_ids)
+                    _deploy_shard_for_schedule(
+                        task_id, task, shard_index, shard_device_ids, len(shards) + len(kept_deployments),
+                    )
                 )
                 shard_index += 1
             except Exception as e:
@@ -747,6 +889,7 @@ def restart_stream_forward_task_services(task_id: int) -> bool:
     task = StreamForwardTask.query.get(task_id)
     if task and _use_remote_deploy(task):
         _stop_all_remote_deployments(task)
+        _stop_all_local_shards(task)
         _apply_task_service_fields_from_deployments(task, [])
         db.session.commit()
         success, _, _ = _deploy_task_on_remote_node(task_id, task)
