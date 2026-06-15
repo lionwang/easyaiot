@@ -84,6 +84,16 @@ export interface AlgorithmTask {
   last_process_time?: string;
   last_success_time?: string;
   algorithm_services?: AlgorithmModelService[]; // 保留以兼容旧数据
+  sam_supplement_enabled?: boolean;
+  sam_supplement_config?: {
+    pipeline_mode?: 'none' | 'refine_mask' | 'open_vocab' | 'alert_verify';
+    text_prompts?: string[];
+    conf?: number;
+    trigger?: 'always' | 'on_interval' | 'on_alert' | 'on_yolo_empty';
+    interval_frames?: number;
+    merge_iou?: number;
+    return_masks?: boolean;
+  };
   service_names?: string; // 关联的算法服务名称列表（逗号分隔，冗余字段，用于快速显示）
   defense_mode?: string; // 布防模式: full(全防), half(半防), day(白天), night(夜间)
   defense_schedule?: string | number[][]; // 布防时段: JSON字符串或二维数组，7天×24小时

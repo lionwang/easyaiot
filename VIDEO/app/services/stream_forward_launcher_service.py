@@ -679,6 +679,15 @@ def _deploy_shard_on_remote_node(
     )
 
 
+def _shard_index_from_workload_id(workload_id: str) -> int:
+    if ':s' in workload_id:
+        try:
+            return int(workload_id.rsplit(':s', 1)[1])
+        except (TypeError, ValueError):
+            pass
+    return 0
+
+
 def redeploy_existing_shard(
     task_id: int,
     task: StreamForwardTask,
@@ -691,6 +700,14 @@ def redeploy_existing_shard(
     if not device_ids or not workload_id:
         raise ValueError('分片部署信息不完整')
 
+    if deployment.get('local'):
+        return _deploy_shard_locally(
+            task_id,
+            task,
+            _shard_index_from_workload_id(workload_id),
+            device_ids,
+        )
+
     old_node_id = deployment.get('node_id')
     if old_node_id:
         _stop_remote_workload(int(old_node_id), workload_id)
@@ -700,6 +717,13 @@ def redeploy_existing_shard(
     excludes = list(exclude_node_ids or [])
     if old_node_id and int(old_node_id) not in excludes:
         excludes.append(int(old_node_id))
+    try:
+        from app.utils import node_client
+        platform_id = node_client.get_platform_node_id()
+        if platform_id is not None and platform_id not in excludes:
+            excludes.append(platform_id)
+    except Exception as e:
+        logger.debug('获取控制面节点 ID 失败: %s', e)
 
     return _deploy_shard_with_workload_id(
         task_id,

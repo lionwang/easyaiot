@@ -949,6 +949,10 @@ class AlgorithmTask(db.Model):
     last_capture_time = db.Column(db.DateTime, nullable=True, comment='最后抓拍时间（仅抓拍算法任务）')
     
     description = db.Column(db.String(500), nullable=True, comment='任务描述')
+
+    # SAM 补充识别配置
+    sam_supplement_enabled = db.Column(db.Boolean, default=False, nullable=False, comment='是否启用 SAM 补充识别')
+    sam_supplement_config = db.Column(db.Text, nullable=True, comment='SAM 补充配置 JSON')
     
     # 布防时段配置
     defense_mode = db.Column(db.String(20), default='half', nullable=False, comment='布防模式[full:全防模式,half:半防模式,day:白天模式,night:夜间模式]')
@@ -1087,6 +1091,8 @@ class AlgorithmTask(db.Model):
             'service_last_heartbeat': utc_isoformat_z(self.service_last_heartbeat),
             'service_log_path': self.service_log_path,
             'algorithm_services': algorithm_services_list,  # 添加算法模型服务列表
+            'sam_supplement_enabled': bool(self.sam_supplement_enabled),
+            'sam_supplement_config': json.loads(self.sam_supplement_config) if self.sam_supplement_config else None,
             'created_at': utc_isoformat_z(self.created_at),
             'updated_at': utc_isoformat_z(self.updated_at)
         }
@@ -2019,3 +2025,28 @@ class PatrolSession(db.Model):
             'created_at': utc_isoformat_z(self.created_at),
             'updated_at': utc_isoformat_z(self.updated_at),
         }
+
+
+def ensure_algorithm_task_sam_columns(engine):
+    """老库 algorithm_task 表补 SAM 补充识别列。"""
+    import logging
+    from sqlalchemy import inspect, text
+
+    log = logging.getLogger(__name__)
+    columns = {
+        'sam_supplement_enabled': 'BOOLEAN DEFAULT FALSE',
+        'sam_supplement_config': 'TEXT',
+    }
+    try:
+        inspector = inspect(engine)
+        if 'algorithm_task' not in inspector.get_table_names():
+            return
+        col_names = {c['name'] for c in inspector.get_columns('algorithm_task')}
+        for col, ddl in columns.items():
+            if col in col_names:
+                continue
+            with engine.begin() as conn:
+                conn.execute(text(f'ALTER TABLE algorithm_task ADD COLUMN {col} {ddl}'))
+            log.info('已为 algorithm_task 表添加 %s 列', col)
+    except Exception as e:
+        log.warning('ensure_algorithm_task_sam_columns: %s', e)

@@ -347,6 +347,9 @@ last_alert_time = {}  # {device_id: timestamp}
 alert_time_lock = threading.Lock()  # 告警时间戳锁，确保线程安全
 # 最新检测 overlay 缓存：检测迟达时主画面仍可叠框（与告警图一致）
 device_latest_overlays = {}  # {device_id: {'detections': [...], 'timestamp': float, 'frame_number': int}}
+# SAM 补充识别（YOLO + SAM Pipeline）
+_sam_config = None
+_sam_client = None
 device_latest_overlay_locks = {}  # {device_id: threading.Lock()}
 
 
@@ -720,6 +723,33 @@ def _run_yolo_on_frame(
             dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0)
             for det in all_detections
         ]
+
+    # SAM 补充识别（Pipeline 精修 / 开放词汇 / 告警确认）
+    global _sam_config, _sam_client
+    if _sam_config and _sam_config.get('enabled') and _sam_client:
+        try:
+            from app.utils.sam_supplement import sam_supplement_frame
+            supplemented = sam_supplement_frame(
+                frame, all_detections, _sam_config, _sam_client, frame_number=frame_number,
+            )
+            if supplemented is not all_detections:
+                all_detections = supplemented
+                if use_tracking and task_config and task_config.tracking_enabled:
+                    tracker = trackers.get(device_id)
+                    if tracker:
+                        tracked_detections = tracker.update(all_detections, frame_number, current_time=timestamp)
+                    else:
+                        tracked_detections = [
+                            dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0)
+                            for det in all_detections
+                        ]
+                else:
+                    tracked_detections = [
+                        dict(det, track_id=0, is_cached=False, first_seen_time=timestamp, duration=0.0)
+                        for det in all_detections
+                    ]
+        except Exception as e:
+            logger.warning(f"SAM 补充识别异常 device={device_id}: {e}")
 
     detections = []
     for tracked_det in tracked_detections:
@@ -1218,7 +1248,7 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
 
 def load_task_config():
     """从数据库加载任务配置（重启时会重新加载，确保获取最新的摄像头信息）"""
-    global task_config, yolo_models, yolo_model_devices, tracker
+    global task_config, yolo_models, yolo_model_devices, tracker, _sam_config, _sam_client
 
     try:
         logger.info(f"🔄 正在从数据库重新加载任务配置: task_id={TASK_ID}")
@@ -1231,6 +1261,31 @@ def load_task_config():
             return False
 
         task_config = task
+
+        # SAM 补充识别配置
+        try:
+            from app.utils.sam_supplement import load_sam_config_from_env, SamClient
+            _sam_config = load_sam_config_from_env()
+            if not _sam_config.get('enabled') and getattr(task, 'sam_supplement_enabled', False):
+                raw = getattr(task, 'sam_supplement_config', None)
+                cfg = json.loads(raw) if raw and isinstance(raw, str) else (raw or {})
+                _sam_config = {
+                    'enabled': True,
+                    'pipeline_mode': cfg.get('pipeline_mode', 'none'),
+                    'text_prompts': cfg.get('text_prompts') or [],
+                    'conf': float(cfg.get('conf', 0.45)),
+                    'trigger': cfg.get('trigger', 'on_interval'),
+                    'interval_frames': int(cfg.get('interval_frames', 25)),
+                    'merge_iou': float(cfg.get('merge_iou', 0.5)),
+                    'return_masks': bool(cfg.get('return_masks', True)),
+                }
+            _sam_client = SamClient() if _sam_config.get('enabled') else None
+            if _sam_config.get('enabled'):
+                logger.info(f"✅ SAM 补充识别已启用: mode={_sam_config.get('pipeline_mode')}")
+        except Exception as e:
+            logger.warning(f"SAM 补充配置加载失败: {e}")
+            _sam_config = {'enabled': False}
+            _sam_client = None
 
         # 解析模型ID列表
         model_ids = []

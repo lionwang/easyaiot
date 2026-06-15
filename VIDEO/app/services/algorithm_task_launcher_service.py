@@ -8,6 +8,7 @@
 """
 import os
 import sys
+import json
 import subprocess
 import logging
 import threading
@@ -58,7 +59,34 @@ def _resolve_video_control_url() -> str:
     return f'{gateway}/admin-api/video'
 
 
-def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_host: str) -> dict:
+def _inject_sam_supplement_env(env: dict, task) -> None:
+    """将算法任务的 SAM 补充配置写入子进程环境变量。"""
+    enabled = bool(getattr(task, 'sam_supplement_enabled', False))
+    env['SAM_SUPPLEMENT_ENABLED'] = 'true' if enabled else 'false'
+    if not enabled:
+        return
+    cfg = {}
+    raw = getattr(task, 'sam_supplement_config', None)
+    if raw:
+        try:
+            cfg = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception:
+            cfg = {}
+    env['SAM_SUPPLEMENT_CONFIG'] = json.dumps(cfg, ensure_ascii=False)
+    env['SAM_PIPELINE_MODE'] = str(cfg.get('pipeline_mode', 'none'))
+    prompts = cfg.get('text_prompts') or []
+    env['SAM_TEXT_PROMPTS'] = ','.join(prompts) if isinstance(prompts, list) else str(prompts)
+    env['SAM_CONF'] = str(cfg.get('conf', 0.45))
+    env['SAM_TRIGGER'] = str(cfg.get('trigger', 'on_interval'))
+    env['SAM_INTERVAL_FRAMES'] = str(cfg.get('interval_frames', 25))
+    env['SAM_MERGE_IOU'] = str(cfg.get('merge_iou', 0.5))
+    env['SAM_RETURN_MASKS'] = 'true' if cfg.get('return_masks', True) else 'false'
+    ai_url = os.getenv('AI_SERVICE_URL')
+    if ai_url:
+        env['AI_SERVICE_URL'] = ai_url
+
+
+def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_host: str, task=None) -> dict:
     env = {}
     for key in (
         'DATABASE_URL', 'GATEWAY_URL', 'GB28181_SERVICE_URL', 'JWT_TOKEN', 'JAVA_BACKEND_URL',
@@ -94,6 +122,8 @@ def _build_task_deploy_env(task_id: int, task_type: str, log_path: str, server_h
         env['KAFKA_BOOTSTRAP_SERVERS'] = kafka_bootstrap
     from app.utils.node_remote_tools import apply_remote_toolchain_env
     apply_remote_toolchain_env(env)
+    if task is not None:
+        _inject_sam_supplement_env(env, task)
     return env
 
 
@@ -133,7 +163,7 @@ def _deploy_task_on_remote_node(task_id: int, task: AlgorithmTask) -> Tuple[bool
     deploy_script = os.path.join(work_dir, 'run_deploy.py')
     command = [python_exec, deploy_script]
 
-    env = _build_task_deploy_env(task_id, task.task_type, log_dir, host)
+    env = _build_task_deploy_env(task_id, task.task_type, log_dir, host, task=task)
     env['VIDEO_ROOT'] = video_root_remote
 
     result = node_client.deploy_workload(

@@ -66,6 +66,16 @@ def _serialize_library_ids(ids) -> Optional[str]:
     return json.dumps(parsed, ensure_ascii=False) if parsed else None
 
 
+def _serialize_sam_supplement_config(config) -> Optional[str]:
+    if config is None:
+        return None
+    if isinstance(config, str):
+        return config if config.strip() else None
+    if isinstance(config, dict):
+        return json.dumps(config, ensure_ascii=False)
+    return None
+
+
 def _has_library_matching_scope(library_ids) -> bool:
     return bool(_normalize_library_ids(library_ids))
 
@@ -422,7 +432,9 @@ def create_algorithm_task(task_name: str,
                          patrol_mode: str = 'pool',
                          patrol_interval_sec: int = 10,
                          patrol_pool_size: int = 4,
-                         focus_device_id: Optional[str] = None) -> AlgorithmTask:
+                         focus_device_id: Optional[str] = None,
+                         sam_supplement_enabled: bool = False,
+                         sam_supplement_config=None) -> AlgorithmTask:
     """创建算法任务"""
     try:
         # 验证任务类型
@@ -677,6 +689,8 @@ def create_algorithm_task(task_name: str,
             defense_schedule=defense_schedule,
             schedule_policy=schedule_policy or 'local',
             target_node_id=target_node_id,
+            sam_supplement_enabled=bool(sam_supplement_enabled),
+            sam_supplement_config=_serialize_sam_supplement_config(sam_supplement_config),
         )
         
         db.session.add(task)
@@ -848,7 +862,13 @@ def update_algorithm_task(task_id: int, **kwargs) -> AlgorithmTask:
             'is_enabled', 'status', 'exception_reason',
             'defense_mode', 'defense_schedule',
             'schedule_policy', 'target_node_id',
+            'sam_supplement_enabled', 'sam_supplement_config',
         ]
+        
+        if 'sam_supplement_config' in kwargs:
+            kwargs['sam_supplement_config'] = _serialize_sam_supplement_config(
+                kwargs['sam_supplement_config']
+            )
         
         # 验证布防模式
         if 'defense_mode' in kwargs:

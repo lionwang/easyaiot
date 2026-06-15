@@ -791,6 +791,73 @@ const [registerForm, { setFieldsValue, validate, resetFields, updateSchema, getF
         (values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol') && !!values.plate_matching_enabled,
     },
     {
+      field: 'sam_supplement_enabled',
+      label: 'SAM 补充识别',
+      component: 'Switch',
+      defaultValue: false,
+      componentProps: { checkedChildren: '开', unCheckedChildren: '关' },
+      helpMessage: '在 YOLO 主检基础上叠加 SAM：Pipeline 精修 mask 或开放词汇补检',
+      ifShow: ({ values }) => values.task_type === 'realtime' || values.task_type === 'snap' || values.task_type === 'patrol',
+    },
+    {
+      field: 'sam_pipeline_mode',
+      label: 'SAM 工作模式',
+      component: 'Select',
+      defaultValue: 'none',
+      componentProps: {
+        options: [
+          { label: 'Pipeline 精修 mask', value: 'refine_mask' },
+          { label: '开放词汇补充', value: 'open_vocab' },
+          { label: '告警二次确认', value: 'alert_verify' },
+        ],
+      },
+      ifShow: ({ values }) => !!values.sam_supplement_enabled,
+    },
+    {
+      field: 'sam_text_prompts',
+      label: 'SAM 文本类别',
+      component: 'Select',
+      componentProps: {
+        mode: 'tags',
+        placeholder: '英文类别，如 fire、helmet',
+        tokenSeparators: [','],
+      },
+      ifShow: ({ values }) =>
+        !!values.sam_supplement_enabled &&
+        (values.sam_pipeline_mode === 'open_vocab' || values.sam_pipeline_mode === 'alert_verify'),
+    },
+    {
+      field: 'sam_trigger',
+      label: 'SAM 触发策略',
+      component: 'Select',
+      defaultValue: 'on_interval',
+      componentProps: {
+        options: [
+          { label: '每 N 帧', value: 'on_interval' },
+          { label: '仅告警帧', value: 'on_alert' },
+          { label: 'YOLO 无检出时', value: 'on_yolo_empty' },
+          { label: '每帧', value: 'always' },
+        ],
+      },
+      ifShow: ({ values }) => !!values.sam_supplement_enabled,
+    },
+    {
+      field: 'sam_interval_frames',
+      label: 'SAM 间隔帧数',
+      component: 'InputNumber',
+      defaultValue: 25,
+      componentProps: { min: 1, max: 300, style: { width: '100%' } },
+      ifShow: ({ values }) => !!values.sam_supplement_enabled && values.sam_trigger === 'on_interval',
+    },
+    {
+      field: 'sam_conf',
+      label: 'SAM 置信度',
+      component: 'InputNumber',
+      defaultValue: 0.45,
+      componentProps: { min: 0.1, max: 0.95, step: 0.05, style: { width: '100%' } },
+      ifShow: ({ values }) => !!values.sam_supplement_enabled,
+    },
+    {
       field: 'alert_notification_enabled',
       label: '启用告警通知',
       component: 'Switch',
@@ -1061,6 +1128,12 @@ const [register, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) 
       face_library_ids: normalizeLibraryIds(record.face_library_ids),
       plate_matching_enabled: record.plate_matching_enabled === true,
       plate_library_ids: normalizeLibraryIds(record.plate_library_ids),
+      sam_supplement_enabled: record.sam_supplement_enabled === true,
+      sam_pipeline_mode: record.sam_supplement_config?.pipeline_mode || 'open_vocab',
+      sam_text_prompts: record.sam_supplement_config?.text_prompts || [],
+      sam_trigger: record.sam_supplement_config?.trigger || 'on_interval',
+      sam_interval_frames: record.sam_supplement_config?.interval_frames ?? 25,
+      sam_conf: record.sam_supplement_config?.conf ?? 0.45,
       alarm_suppress_time: record.alarm_suppress_time ?? 300,
       alert_notification_enabled: record.alert_notification_enabled !== undefined ? record.alert_notification_enabled : false,
       notification_channels: notificationChannels.value,
@@ -1403,6 +1476,23 @@ const handleSubmit = async () => {
     if (values.schedule_policy !== 'node') {
       values.target_node_id = null;
     }
+
+    values.sam_supplement_config = values.sam_supplement_enabled
+      ? {
+          pipeline_mode: values.sam_pipeline_mode || 'open_vocab',
+          text_prompts: values.sam_text_prompts || [],
+          trigger: values.sam_trigger || 'on_interval',
+          interval_frames: values.sam_interval_frames ?? 25,
+          conf: values.sam_conf ?? 0.45,
+          merge_iou: 0.5,
+          return_masks: values.sam_pipeline_mode === 'refine_mask',
+        }
+      : null;
+    delete values.sam_pipeline_mode;
+    delete values.sam_text_prompts;
+    delete values.sam_trigger;
+    delete values.sam_interval_frames;
+    delete values.sam_conf;
 
     if (values.task_type === 'snap' && values.cron_expression) {
       const cronCheck = validateSnapCronMinInterval(values.cron_expression);

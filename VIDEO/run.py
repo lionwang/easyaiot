@@ -202,6 +202,8 @@ def create_app():
                 DeviceTrackSession, DeviceTrackPoint, PatrolSession,
             )
             db.create_all()
+            from models import ensure_algorithm_task_sam_columns
+            ensure_algorithm_task_sam_columns(db.engine)
             
             # 迁移：检查并添加缺失的列和表
             try:

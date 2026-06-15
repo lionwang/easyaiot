@@ -121,6 +121,8 @@ def create_task():
             patrol_interval_sec=data.get('patrol_interval_sec', 10),
             patrol_pool_size=data.get('patrol_pool_size', 4),
             focus_device_id=data.get('focus_device_id'),
+            sam_supplement_enabled=data.get('sam_supplement_enabled', False),
+            sam_supplement_config=data.get('sam_supplement_config'),
         )
         
         return jsonify({

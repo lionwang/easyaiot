@@ -597,6 +597,40 @@ class InferenceService:
                     pass
             self._cleanup_memory()
 
+    def detect_image_file(self, image_path: str, parameters: Optional[Dict[str, Any]] = None) -> list:
+        """轻量图片检测：仅返回 detections，不创建推理任务、不上传 MinIO（供自动标注批量调用）。"""
+        if parameters is None:
+            parameters = {}
+
+        model = self.get_model()
+        is_onnx = isinstance(model, ONNXInference)
+        conf_thres = parameters.get('conf_thres', 0.25)
+        iou_thres = parameters.get('iou_thres', 0.45)
+        class_ids = self._resolve_class_ids(model, parameters)
+
+        if is_onnx:
+            _, detections = model.detect(
+                image_path,
+                conf_threshold=conf_thres,
+                iou_threshold=iou_thres,
+                draw=False,
+                class_ids=class_ids,
+            )
+            return detections
+
+        inference_kwargs = self._build_inference_kwargs(model, parameters, conf_thres, iou_thres)
+        results = model(image_path, **inference_kwargs)
+        detections = []
+        for result in results:
+            for box in result.boxes:
+                detections.append({
+                    'class': int(box.cls.item()),
+                    'class_name': result.names[int(box.cls.item())],
+                    'confidence': float(box.conf.item()),
+                    'bbox': box.xyxy.tolist()[0],
+                })
+        return detections
+
     def _process_image_results(self, results, task_id: str, original_image_url: str = None, is_onnx: bool = False) -> Dict[str, Any]:
         """处理图片推理结果，生成可视化图和检测数据，并上传到MinIO
         Args:
