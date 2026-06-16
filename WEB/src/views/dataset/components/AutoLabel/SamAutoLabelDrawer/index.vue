@@ -14,20 +14,17 @@
   >
     <template #title>
       <div class="detail-drawer-header">
-        <div class="detail-drawer-header__main">
-          <div class="detail-drawer-header__icon">
-            <Icon icon="ant-design:deployment-unit-outlined" :size="22" />
-          </div>
-          <div>
-            <BasicTitle span class="detail-drawer-header__title">{{ COPY.drawerTitle }}</BasicTitle>
-            <div class="detail-drawer-header__meta">
-              <span>数据集 ID {{ datasetId }}</span>
-              <template v-if="taskId">
-                <span class="meta-sep">·</span>
-                <span>任务 ID {{ taskId }}</span>
-              </template>
-            </div>
-          </div>
+        <div class="detail-drawer-header__icon">
+          <Icon icon="ant-design:deployment-unit-outlined" :size="18" />
+        </div>
+        <div class="detail-drawer-header__line">
+          <span class="detail-drawer-header__title">{{ COPY.drawerTitle }}</span>
+          <span class="detail-drawer-header__sep">·</span>
+          <span class="detail-drawer-header__desc">{{ COPY.drawerDesc }}</span>
+          <template v-if="taskRunning && taskId">
+            <span class="detail-drawer-header__sep">·</span>
+            <span class="detail-drawer-header__meta">任务 #{{ taskId }}</span>
+          </template>
         </div>
         <div v-if="taskStatus" class="detail-drawer-header__tags">
           <Tag :color="taskStatusTagColor">{{ statusLabel }}</Tag>
@@ -451,7 +448,6 @@ import {
   Tabs,
   Tag,
 } from 'ant-design-vue';
-import { BasicTitle } from '@/components/Basic';
 import { Button, PopConfirmButton } from '@/components/Button';
 import { CodeEditor } from '@/components/CodeEditor';
 import { CollapseContainer, ScrollContainer } from '@/components/Container';
@@ -499,6 +495,7 @@ const drawerWidth = 'calc(100vw - 200px)';
 /** 界面文案（术语与节点模块保持一致） */
 const COPY = {
   drawerTitle: '智能标注流水线',
+  drawerDesc: '摄像头无人值守，自动采集标注',
   tabs: { config: '参数配置', monitor: '运行监控' },
   footer: {
     close: '关闭',
@@ -1169,50 +1166,72 @@ onUnmounted(() => {
 .detail-drawer-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
   width: 100%;
   padding-right: 32px;
-}
-
-.detail-drawer-header__main {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
 }
 
 .detail-drawer-header__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: linear-gradient(135deg, #eef4ff, #dce8ff);
   color: @node-primary;
   flex-shrink: 0;
 }
 
+.detail-drawer-header__line {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+}
+
 .detail-drawer-header__title {
-  font-size: 18px !important;
-  font-weight: 600 !important;
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.detail-drawer-header__desc {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .detail-drawer-header__meta {
-  margin-top: 2px;
+  flex-shrink: 0;
+  color: rgba(0, 0, 0, 0.4);
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
 }
 
-.meta-sep {
+.detail-drawer-header__sep {
+  flex-shrink: 0;
   margin: 0 6px;
+  color: rgba(0, 0, 0, 0.25);
 }
 
 .detail-drawer-header__tags {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
+
+  :deep(.ant-tag) {
+    margin: 0;
+    line-height: 18px;
+    font-size: 12px;
+  }
 }
 
 .detail-drawer-content {
@@ -1475,8 +1494,23 @@ onUnmounted(() => {
 <style lang="less">
 .sam-auto-label-drawer {
   .ant-drawer-header {
-    padding: 16px 24px;
+    padding: 10px 20px;
+    min-height: auto;
     border-bottom: 1px solid #f0f0f0;
+  }
+
+  .ant-drawer-close {
+    top: 10px;
+    inset-inline-end: 16px;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+  }
+
+  .ant-drawer-title {
+    flex: 1;
+    min-width: 0;
+    line-height: 1;
   }
 
   .ant-drawer-body {
