@@ -7,7 +7,9 @@ import concurrent.futures
 import logging
 import os
 import re
+import signal
 import socket
+import threading
 import time
 import tzlocal
 from datetime import datetime
@@ -155,6 +157,94 @@ _monitor = IpReachabilityMonitor(int(os.getenv('CAMERA_ONLINE_INTERVAL', 20)))
 logger = logging.getLogger(__name__)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 scheduler = BackgroundScheduler(timezone=tzlocal.get_localzone_name())
+
+_scheduler_lock = threading.Lock()
+_scheduler_shutdown_registered = False
+_scheduler_stopped = False
+_background_stopped = False
+
+
+def ensure_scheduler_running() -> bool:
+    """启动全局 APScheduler（幂等）。"""
+    global _scheduler_stopped
+    with _scheduler_lock:
+        if _scheduler_stopped:
+            logger.warning('APScheduler 已关闭，跳过启动')
+            return False
+        if not scheduler.running:
+            scheduler.start()
+        return True
+
+
+def shutdown_scheduler(wait: bool = True) -> None:
+    """安全关闭全局 APScheduler（幂等）。"""
+    global _scheduler_stopped
+    with _scheduler_lock:
+        if _scheduler_stopped:
+            return
+        if scheduler.running:
+            try:
+                scheduler.shutdown(wait=wait)
+            except Exception as exc:
+                logger.debug('关闭 APScheduler 失败: %s', exc)
+        _scheduler_stopped = True
+
+
+def shutdown_background_services(wait: bool = True) -> None:
+    """停止 IP 监控、线程池与调度器，避免进程退出时后台线程继续提交任务。"""
+    global _background_stopped
+    with _scheduler_lock:
+        if _background_stopped:
+            return
+        _background_stopped = True
+
+    try:
+        _monitor.stop()
+    except Exception as exc:
+        logger.debug('停止 IP 可达性监控失败: %s', exc)
+
+    shutdown_scheduler(wait=wait)
+
+    try:
+        from app.services.snap_task_service import shutdown_snap_scheduler
+        shutdown_snap_scheduler(wait=wait)
+    except Exception as exc:
+        logger.debug('关闭抓拍任务调度器失败: %s', exc)
+
+    try:
+        executor.shutdown(wait=wait, cancel_futures=True)
+    except TypeError:
+        try:
+            executor.shutdown(wait=wait)
+        except Exception as exc:
+            logger.debug('关闭 camera executor 失败: %s', exc)
+    except Exception as exc:
+        logger.debug('关闭 camera executor 失败: %s', exc)
+
+
+def register_scheduler_shutdown() -> None:
+    """注册进程退出与信号处理，确保后台服务先于解释器关闭线程池。"""
+    global _scheduler_shutdown_registered
+    with _scheduler_lock:
+        if _scheduler_shutdown_registered:
+            return
+        _scheduler_shutdown_registered = True
+
+    import atexit
+
+    def _on_exit():
+        shutdown_background_services(wait=True)
+
+    atexit.register(_on_exit)
+
+    def _signal_handler(signum, frame):
+        shutdown_background_services(wait=True)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _signal_handler)
+        except Exception:
+            pass
 
 
 def is_default_directory(directory) -> bool:

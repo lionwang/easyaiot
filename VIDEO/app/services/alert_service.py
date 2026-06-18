@@ -153,10 +153,12 @@ def _alert_to_dict(alert: Alert) -> dict:
 
 def _get_alert_filter_query(args: dict) -> Query:
     """构建报警查询过滤器"""
-    # 仅返回已写入 MinIO 地址的记录（image_url 非空）
+    # 仅返回已写入 MinIO 地址的记录（image_url 非空，record_path 非空）
     query: Query = Alert.query.filter(
         Alert.image_url.isnot(None),
-        db.func.trim(Alert.image_url) != ''
+        db.func.trim(Alert.image_url) != '',
+        Alert.record_path.isnot(None),
+        db.func.trim(Alert.record_path) != ''
     )
 
     if 'object' in args and args['object']:
@@ -256,7 +258,7 @@ def _get_alert_filter_query(args: dict) -> Query:
 
 
 def get_alert_list(args: dict) -> dict:
-    """获取报警列表（仅返回已写入 MinIO 的 image_url 非空记录）
+    """获取报警列表（仅返回 image_url、record_path 均已写入 MinIO 的记录）
 
     Args:
         args: 查询参数字典，支持以下参数：
@@ -324,7 +326,7 @@ def get_correlation_events(correlation_id: str) -> dict:
 
 
 def get_alert_count(args: dict) -> dict:
-    """获取报警统计（与列表一致：仅统计 image_url 已写入 MinIO 的记录，筛选条件同 get_alert_list）"""
+    """获取报警统计（与列表一致：仅统计 image_url、record_path 均已写入 MinIO 的记录，筛选条件同 get_alert_list）"""
     query = _get_alert_filter_query(args)
 
     if 'group' in args and args['group']:

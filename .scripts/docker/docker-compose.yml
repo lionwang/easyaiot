@@ -103,8 +103,9 @@ services:
     networks:
       - easyaiot-network
 
-  # TDengine Server
+  # TDengine Server（默认不启动；EASYAIOT_ENABLE_TDENGINE=1 或 docker compose --profile tdengine up）
   TDengine:
+    profiles: ["tdengine"]
     image: tdengine/tsdb:3.3.8.4
     container_name: tdengine-server
     privileged: true
@@ -140,6 +141,7 @@ services:
 
   # TDengine 初始化容器（在 TDengine 就绪后执行数据库和超级表初始化）
   TDengine-init:
+    profiles: ["tdengine"]
     image: tdengine/tdengine:3.3.0.0
     container_name: tdengine-init
     depends_on:
@@ -214,6 +216,7 @@ services:
       - "0.0.0.0:9094:9094"
     environment:
       - TZ=Asia/Shanghai
+      - KAFKA_HEAP_OPTS=-Xmx512m -Xms256m
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
       - KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
@@ -369,9 +372,9 @@ services:
     networks:
       - easyaiot-network
 
-  # OpenVSCode Server（算法任务 AI 后处理脚本在线编辑）
-  # 使用 linuxserver 镜像：国内镜像源对 gitpod/openvscode-server 常返回 403
+  # OpenVSCode Server（默认不启动；EASYAIOT_ENABLE_VSCODE=1 或 docker compose --profile vscode up）
   VSCode:
+    profiles: ["vscode"]
     image: linuxserver/openvscode-server:1.95.3
     container_name: openvscode-server
     restart: always
@@ -393,8 +396,9 @@ services:
     networks:
       - easyaiot-network
 
-  # EMQX MQTT Broker
+  # EMQX MQTT Broker（默认不启动；EASYAIOT_ENABLE_EMQX=1 或 docker compose --profile emqx up）
   EMQX:
+    profiles: ["emqx"]
     image: emqx/emqx:5.8.7
     container_name: emqx-server
     restart: always

@@ -43,6 +43,26 @@ _daemons_lock = threading.Lock()
 # 启动锁：防止并发启动同一个任务
 _starting_tasks: Dict[int, threading.Lock] = {}
 _starting_lock = threading.Lock()
+# 停止请求代次：start/restart 会递增以作废尚未执行的异步 stop，避免 stop→start 竞态误杀新进程
+_stop_request_id: Dict[int, int] = {}
+_stop_request_lock = threading.Lock()
+
+
+def _issue_stop_request(task_id: int) -> int:
+    with _stop_request_lock:
+        request_id = _stop_request_id.get(task_id, 0) + 1
+        _stop_request_id[task_id] = request_id
+        return request_id
+
+
+def _cancel_pending_stop_requests(task_id: int) -> None:
+    with _stop_request_lock:
+        _stop_request_id[task_id] = _stop_request_id.get(task_id, 0) + 1
+
+
+def _is_stop_request_current(task_id: int, request_id: int) -> bool:
+    with _stop_request_lock:
+        return _stop_request_id.get(task_id) == request_id
 
 
 def _get_video_root() -> str:
@@ -540,13 +560,18 @@ def cleanup_orphaned_processes(task_id: int, extra_protected_pids: set = None):
         logger.warning(f"清理遗留进程时出错: {str(e)}")
 
 
-def stop_service_process(task_id: int, service_type: str):
+def stop_service_process(task_id: int, service_type: str, stop_request_id: int = None):
     """停止服务进程
     
     Args:
         task_id: 算法任务ID
         service_type: 服务类型 ('realtime' 统一服务)
+        stop_request_id: 异步停止请求代次；若已过期则跳过
     """
+    if stop_request_id is not None and not _is_stop_request_current(task_id, stop_request_id):
+        logger.info('跳过过期停止请求: task_id=%s', task_id)
+        return
+
     # 等待启动完成（如果正在启动）
     with _starting_lock:
         if task_id in _starting_tasks:
@@ -573,6 +598,7 @@ def stop_service_process(task_id: int, service_type: str):
 
     _stop_post_process_cluster(task_id, task)
 
+    daemon_to_join = None
     with _daemons_lock:
         if task_id in _running_daemons:
             daemon = _running_daemons[task_id]
@@ -583,6 +609,9 @@ def stop_service_process(task_id: int, service_type: str):
                 logger.error(f"❌ 停止{service_type}服务失败: task_id={task_id}, error={str(e)}")
             finally:
                 del _running_daemons[task_id]
+                daemon_to_join = daemon
+    if daemon_to_join and not daemon_to_join.join_daemon_thread(timeout=15):
+        logger.warning('任务 %s 守护线程未在 15s 内结束', task_id)
 
     if not was_remote:
         cleanup_orphaned_processes(task_id)
@@ -593,13 +622,14 @@ def stop_service_process(task_id: int, service_type: str):
             del _starting_tasks[task_id]
 
 
-def stop_all_task_services(task_id: int):
+def stop_all_task_services(task_id: int, stop_request_id: int = None):
     """停止任务的所有服务
     
     Args:
         task_id: 算法任务ID
+        stop_request_id: 异步停止请求代次；若已过期则跳过
     """
-    stop_service_process(task_id, 'realtime')
+    stop_service_process(task_id, 'realtime', stop_request_id=stop_request_id)
 
 
 def restart_task_services(task_id: int) -> bool:
@@ -611,6 +641,7 @@ def restart_task_services(task_id: int) -> bool:
     Returns:
         bool: 是否成功重启服务
     """
+    _cancel_pending_stop_requests(task_id)
     task = AlgorithmTask.query.get(task_id)
     if task and _use_remote_deploy(task):
         _stop_remote_task(task_id, task.node_id)
@@ -660,6 +691,9 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
     if not task_start_lock.acquire(blocking=False):
         logger.warning(f"任务 {task_id} 正在启动中，跳过重复启动")
         return (True, "任务正在启动中", True)
+    
+    # 作废尚未执行的异步 stop，避免 stop→start 竞态在数毫秒后误杀新守护进程
+    _cancel_pending_stop_requests(task_id)
     
     try:
         # 实时算法任务和抓拍算法任务都需要启动服务进程
@@ -736,13 +770,21 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
             extra_env = {}
             _inject_sam_supplement_env(extra_env, task)
             daemon = None
+            old_daemon_to_join = None
             with _daemons_lock:
-                # 替换前务必 stop 旧守护线程，避免 dict 覆盖后遗留孤儿线程
                 if task_id in _running_daemons:
                     old_daemon = _running_daemons[task_id]
+                    if (
+                        old_daemon._running
+                        and old_daemon._process
+                        and old_daemon._process.poll() is None
+                    ):
+                        logger.warning(f"任务 {task_id} 的守护进程已在运行，跳过重复创建")
+                        return (True, "任务运行中", True)
                     if old_daemon._running:
                         try:
                             old_daemon.stop()
+                            old_daemon_to_join = old_daemon
                         except Exception:
                             pass
                     del _running_daemons[task_id]
@@ -753,6 +795,12 @@ def start_task_services(task_id: int, task: AlgorithmTask) -> Tuple[bool, str, b
                     extra_env=extra_env,
                 )
                 _running_daemons[task_id] = daemon
+
+            if old_daemon_to_join and not old_daemon_to_join.join_daemon_thread(timeout=15):
+                logger.warning(
+                    '任务 %s 的旧守护线程未在 15s 内结束，可能存在短暂并发',
+                    task_id,
+                )
             
             # 等待守护进程启动并获取进程PID（最多等待2秒）
             import time

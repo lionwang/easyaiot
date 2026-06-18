@@ -60,21 +60,25 @@ echo "" >> "$LOG_FILE"
 MIDDLEWARE_SERVICES=(
     "Nacos"
     "PostgresSQL"
-    "TDengine"
     "Redis"
     "Kafka"
     "MinIO"
     "Milvus"
     "SRS"
     "NodeRED"
-    "VSCode"
-    "EMQX"
     "ZLMediaKit"
+)
+
+# 默认不启动（省内存）；需要时设置 EASYAIOT_ENABLE_TDENGINE=1 / EASYAIOT_ENABLE_EMQX=1 / EASYAIOT_ENABLE_VSCODE=1
+DISABLED_BY_DEFAULT_MIDDLEWARE_SERVICES=(
+    "TDengine"
+    "TDengine-init"
+    "EMQX"
+    "VSCode"
 )
 
 # 可选中间件：镜像拉取失败时不阻塞其余核心服务启动
 OPTIONAL_MIDDLEWARE_SERVICES=(
-    "VSCode"
 )
 
 # 中间件端口映射
@@ -3806,17 +3810,31 @@ compose_up_middleware() {
     fi
 
     if [ ${#skip_services[@]} -gt 0 ]; then
-        print_warning "以下可选服务已跳过: ${skip_services[*]}"
+        print_warning "以下服务已跳过: ${skip_services[*]}"
     fi
     print_info "启动服务: ${up_services[*]}"
     $COMPOSE_CMD -f "$COMPOSE_FILE" up -d "${up_services[@]}" 2>&1 | tee -a "$LOG_FILE"
     return "${PIPESTATUS[0]}"
 }
 
-# 收集镜像不可用的可选服务列表
+# 收集默认不启动 / 镜像不可用的服务列表（供 compose_up_middleware 跳过）
 collect_skippable_optional_services() {
     local -a skip_services=()
     local svc img
+    for svc in "${DISABLED_BY_DEFAULT_MIDDLEWARE_SERVICES[@]}"; do
+        case "$svc" in
+            TDengine|TDengine-init)
+                [ "${EASYAIOT_ENABLE_TDENGINE:-0}" = "1" ] && continue
+                ;;
+            EMQX)
+                [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ] && continue
+                ;;
+            VSCode)
+                [ "${EASYAIOT_ENABLE_VSCODE:-0}" = "1" ] && continue
+                ;;
+        esac
+        skip_services+=("$svc")
+    done
     for svc in "${OPTIONAL_MIDDLEWARE_SERVICES[@]}"; do
         img="$(_get_service_image_from_compose "$svc")"
         if [ -n "$img" ] && ! docker image inspect "$img" &>/dev/null; then
@@ -4930,7 +4948,9 @@ install_middleware() {
     echo ""
     print_info "Milvus 向量库: http://localhost:9091/healthz, gRPC localhost:19530"
     print_info "  查看日志: ./install_middleware_linux.sh logs Milvus"
-    print_info "VSCode 后处理 IDE: http://localhost:10192"
+    if [ "${EASYAIOT_ENABLE_VSCODE:-0}" = "1" ]; then
+        print_info "VSCode 后处理 IDE: http://localhost:10192"
+    fi
     echo ""
     # 不再固定 sleep 10：下方 ensure_postgresql_password 内部自带 wait_for_postgresql 精确等待
     # 确保 PostgreSQL 密码正确（确保重启后密码正确）
@@ -4949,9 +4969,13 @@ install_middleware() {
     echo ""
     init_databases
     
-    # 初始化 TDengine
+    # 初始化 TDengine（仅启用 TDengine 中间件时）
     echo ""
-    init_tdengine
+    if [ "${EASYAIOT_ENABLE_TDENGINE:-0}" = "1" ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'tdengine-server'; then
+        init_tdengine
+    else
+        print_info "TDengine 未启用，跳过 TDengine 初始化（需要时: EASYAIOT_ENABLE_TDENGINE=1）"
+    fi
     
     # 初始化 MinIO
     echo ""

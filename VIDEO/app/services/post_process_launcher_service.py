@@ -24,7 +24,12 @@ _local_lock = threading.Lock()
 _DEFAULT_WORKER_HTTP_PORT = 19680
 
 
-def _get_video_root() -> str:
+def _post_process_workers_globally_enabled() -> bool:
+    return os.getenv('EASYAIOT_ENABLE_POST_PROCESS_WORKER', '0').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+
+
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -190,6 +195,8 @@ def _stop_worker_remote(task_id: int, replica: int) -> None:
 
 
 def start_post_process_workers(task: AlgorithmTask) -> Tuple[bool, str]:
+    if not _post_process_workers_globally_enabled():
+        return True, '后处理 Worker 全局未启用（EASYAIOT_ENABLE_POST_PROCESS_WORKER=1 可开启）'
     if not bool(getattr(task, 'post_process_enabled', False)):
         return True, '后处理未启用'
     replicas = _task_replicas(task)

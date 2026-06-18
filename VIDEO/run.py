@@ -123,7 +123,7 @@ def send_heartbeat(client, ip, port, stop_event):
         time.sleep(5)
 
 
-def create_app():
+def create_app(start_background_tasks=None):
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
     
@@ -957,6 +957,13 @@ def create_app():
 
     init_health_check(app)
 
+    if start_background_tasks is None:
+        skip = os.getenv('VIDEO_SKIP_BACKGROUND_TASKS', '').strip().lower()
+        start_background_tasks = skip not in ('1', 'true', 'yes', 'on')
+
+    if not start_background_tasks:
+        return app
+
     # Nacos注册与心跳线程管理
     try:
         # 获取环境变量
@@ -1060,21 +1067,11 @@ def create_app():
 
     # 启动摄像头搜索服务
     with app.app_context():
-        from app.services.camera_service import _start_search, scheduler
+        from app.services.camera_service import (
+            _start_search,
+            scheduler,
+        )
         _start_search(app)
-        import atexit
-        # 安全关闭调度器：检查调度器是否正在运行
-        def safe_shutdown_scheduler():
-            try:
-                if scheduler.running:
-                    scheduler.shutdown(wait=False)
-                    print('✅ 调度器已安全关闭')
-            except Exception as e:
-                # 忽略调度器未运行或已关闭的异常
-                pass
-        atexit.register(safe_shutdown_scheduler)
-        
-        
         # 安全关闭所有算法任务守护进程
         def safe_shutdown_daemons():
             try:
@@ -1097,11 +1094,10 @@ def create_app():
     # 启动抓拍空间自动清理任务（每天凌晨2点执行）
     with app.app_context():
         try:
-            from app.services.camera_service import scheduler
+            from app.services.camera_service import ensure_scheduler_running, scheduler
             from app.services.snap_space_service import auto_cleanup_all_spaces
             
-            if scheduler and not scheduler.running:
-                scheduler.start()
+            ensure_scheduler_running()
             
             # 创建包装函数，确保在应用上下文中执行
             def cleanup_wrapper():
@@ -1138,6 +1134,13 @@ def create_app():
             import traceback
             traceback.print_exc()
 
+        # 周期任务通用参数：合并错过的触发、避免并发堆积
+        _interval_job_kwargs = {
+            'coalesce': True,
+            'max_instances': 1,
+            'misfire_grace_time': 30,
+        }
+
         # SRS 本地回放磁盘守护（默认每 10 分钟；磁盘紧张时可配合紧急阈值自动删最旧文件）
         try:
             from app.services.playback_disk_guard_service import run_playback_disk_guard
@@ -1153,6 +1156,7 @@ def create_app():
                 minutes=guard_interval_min,
                 id='playback_disk_guard',
                 replace_existing=True,
+                **_interval_job_kwargs,
             )
             print(f'✅ SRS回放磁盘守护任务已启动（每 {guard_interval_min} 分钟执行）')
             try:
@@ -1182,6 +1186,7 @@ def create_app():
                     seconds=janitor_interval,
                     id='media_janitor',
                     replace_existing=True,
+                    **_interval_job_kwargs,
                 )
                 print(f'✅ 媒体 Janitor 已启动（每 {janitor_interval} 秒）')
         except Exception as e:
@@ -1209,6 +1214,7 @@ def create_app():
                     seconds=health_interval,
                     id='stream_forward_health',
                     replace_existing=True,
+                    **_interval_job_kwargs,
                 )
                 print(f'✅ 推流转发健康监控已启动（每 {health_interval} 秒）')
         except Exception as e:
@@ -1239,11 +1245,10 @@ def create_app():
         
         # 启动心跳超时检查任务（每分钟检查一次）
         try:
-            from app.services.camera_service import scheduler
+            from app.services.camera_service import ensure_scheduler_running, scheduler
             from models import FrameExtractor, Sorter, Pusher
             
-            if scheduler and not scheduler.running:
-                scheduler.start()
+            ensure_scheduler_running()
             
             def check_heartbeat_timeout():
                 """定时检查心跳超时，超过1分钟没上报则更新状态为stopped"""
@@ -1339,7 +1344,10 @@ def create_app():
                 'interval',
                 minutes=1,
                 id='check_heartbeat_timeout',
-                replace_existing=True
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=30,
             )
             print('✅ 心跳超时检查任务已启动（每分钟执行一次）')
 
@@ -1375,6 +1383,10 @@ def create_app():
             import traceback
             traceback.print_exc()
 
+    # 最后注册退出钩子，确保 LIFO 下最先执行：停止监控线程与调度器
+    from app.services.camera_service import register_scheduler_shutdown
+    register_scheduler_shutdown()
+
     return app
 
 
@@ -1395,10 +1407,24 @@ def check_port_available(host, port):
 
 
 if __name__ == '__main__':
+    import signal
+
     app = create_app()
     # 从环境变量读取主机和端口配置
     host = os.getenv('FLASK_RUN_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_RUN_PORT', 6000))
+
+    def _graceful_shutdown(signum, frame):
+        from app.services.camera_service import shutdown_background_services
+        shutdown_background_services(wait=True)
+        sys.exit(0)
+
+    # Flask 启动后会覆盖信号处理，因此在 run 前注册并在退出路径上依赖 atexit
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(_sig, _graceful_shutdown)
+        except Exception:
+            pass
     
     # 检查端口是否可用
     if not check_port_available(host, port):

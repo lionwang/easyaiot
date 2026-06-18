@@ -30,7 +30,7 @@ HTTP_PORT = int(os.getenv('POST_PROCESS_WORKER_HTTP_PORT', '19680'))
 
 def _create_app():
     from run import create_app
-    return create_app()
+    return create_app(start_background_tasks=False)
 
 
 def _message_to_ctx(message: dict) -> dict:

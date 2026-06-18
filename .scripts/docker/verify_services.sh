@@ -194,9 +194,13 @@ verify_service "Nacos" "nacos-server" "8848,9848,9849" \
 verify_service "PostgreSQL" "postgres-server" "5432" \
     "docker exec postgres-server pg_isready -U postgres > /dev/null 2>&1"
 
-# TDengine
-verify_service "TDengine" "tdengine-server" "6030,6041,6060" \
-    "docker exec tdengine-server taos -h localhost -s 'select 1;' > /dev/null 2>&1"
+# TDengine（默认不启用）
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'tdengine-server'; then
+    verify_service "TDengine" "tdengine-server" "6030,6041,6060" \
+        "docker exec tdengine-server taos -h localhost -s 'select 1;' > /dev/null 2>&1"
+else
+    print_info "TDengine 未启用，跳过验证"
+fi
 
 # Redis
 verify_service "Redis" "redis-server" "6379" \
@@ -222,13 +226,21 @@ verify_service "SRS" "srs-server" "1935,1985,8080" \
 verify_service "NodeRED" "nodered-server" "1880" \
     "curl -f http://127.0.0.1:1880/ > /dev/null 2>&1"
 
-# VSCode (OpenVSCode Server)
-verify_service "VSCode" "openvscode-server" "10192" \
-    "curl -f http://127.0.0.1:10192/ > /dev/null 2>&1"
+# VSCode（默认不启用）
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'openvscode-server'; then
+    verify_service "VSCode" "openvscode-server" "10192" \
+        "curl -f http://127.0.0.1:10192/ > /dev/null 2>&1"
+else
+    print_info "VSCode 未启用，跳过验证"
+fi
 
-# EMQX
-verify_service "EMQX" "emqx-server" "1883,8883,8083,8084,18083" \
-    "docker exec emqx-server /opt/emqx/bin/emqx ctl status > /dev/null 2>&1"
+# EMQX（默认不启用）
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'emqx-server'; then
+    verify_service "EMQX" "emqx-server" "1883,8883,8083,8084,18083" \
+        "docker exec emqx-server /opt/emqx/bin/emqx ctl status > /dev/null 2>&1"
+else
+    print_info "EMQX 未启用，跳过验证"
+fi
 
 # ZLMediaKit
 verify_service "ZLMediaKit" "zlmediakit-server" "6080" \

@@ -203,6 +203,7 @@ aj:
 basiclab:
   video:
     service-url: http://localhost:48080
+    api-prefix: /admin-api/video
   post-process:
     worker-http-port: 19680
     local-worker-url: http://127.0.0.1:19680

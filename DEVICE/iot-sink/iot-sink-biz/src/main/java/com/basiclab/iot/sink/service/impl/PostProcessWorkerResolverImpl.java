@@ -1,5 +1,6 @@
 package com.basiclab.iot.sink.service.impl;
 
+import com.baomidou.dynamic.datasource.toolkit.DynamicDataSourceContextHolder;
 import com.basiclab.iot.sink.service.PostProcessWorkerResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +58,7 @@ public class PostProcessWorkerResolverImpl implements PostProcessWorkerResolver 
         }
         try {
             String pattern = WORKLOAD_PREFIX + taskId + "_r%";
+            DynamicDataSourceContextHolder.push("node");
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                     "SELECT cn.host AS host, nwb.workload_id AS workload_id "
                             + "FROM node_workload_binding nwb "
@@ -89,6 +91,8 @@ public class PostProcessWorkerResolverImpl implements PostProcessWorkerResolver 
             }
         } catch (Exception e) {
             log.warn("解析后处理 Worker 地址失败 taskId={}: {}", taskId, e.getMessage());
+        } finally {
+            DynamicDataSourceContextHolder.clear();
         }
         return urls;
     }

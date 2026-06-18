@@ -61,6 +61,9 @@ public class PostProcessServiceImpl implements PostProcessService {
     @Value("${basiclab.video.service-url:http://localhost:48080}")
     private String videoServiceUrl;
 
+    @Value("${basiclab.video.api-prefix:/admin-api/video}")
+    private String videoApiPrefix;
+
     @Override
     public void enqueue(PostProcessRequestMessage message) {
         if (message == null) {
@@ -361,7 +364,7 @@ public class PostProcessServiceImpl implements PostProcessService {
         if (restTemplate == null) {
             restTemplate = new RestTemplate();
         }
-        String url = normalizeBaseUrl(videoServiceUrl) + "/video/alert/hook";
+        String url = normalizeBaseUrl(videoServiceUrl) + normalizeApiPrefix(videoApiPrefix) + "/alert/hook";
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -445,5 +448,12 @@ public class PostProcessServiceImpl implements PostProcessService {
             return "http://localhost:48080";
         }
         return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+    }
+
+    private static String normalizeApiPrefix(String apiPrefix) {
+        if (!StringUtils.hasText(apiPrefix)) {
+            return "/admin-api/video";
+        }
+        return apiPrefix.startsWith("/") ? apiPrefix : "/" + apiPrefix;
     }
 }

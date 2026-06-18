@@ -1242,20 +1242,37 @@ def stop_algorithm_task(task_id: int):
         # 进程清理（daemon.stop 的 SIGTERM 等待最长 10s + 孤儿进程 cleanup）耗时较长，
         # 若同步执行会阻塞 HTTP 请求超过前端 10s 超时，导致前端报超时但后端仍在停止。
         # 任务状态此处已提交（is_enabled=False / run_status=stopped），故清理可异步完成。
-        # 该线程只做进程管理，不访问数据库/Flask 上下文，无需 app context。
         import threading
+        from flask import current_app
 
-        def _teardown(tid: int):
+        from app.services.algorithm_task_launcher_service import (
+            _issue_stop_request,
+            _is_stop_request_current,
+            stop_all_task_services,
+        )
+
+        stop_request_id = _issue_stop_request(task_id)
+        app = current_app._get_current_object()
+
+        def _teardown(tid: int, request_id: int, flask_app):
             try:
-                from app.services.algorithm_task_launcher_service import stop_all_task_services
-                stop_all_task_services(tid)
+                with flask_app.app_context():
+                    latest = AlgorithmTask.query.get(tid)
+                    if latest and latest.is_enabled:
+                        logger.info(
+                            '任务 %s 已重新启用，跳过过期异步停止', tid
+                        )
+                        return
+                if not _is_stop_request_current(tid, request_id):
+                    logger.info('任务 %s 停止请求已过期，跳过', tid)
+                    return
+                stop_all_task_services(tid, stop_request_id=request_id)
             except Exception as e:
                 logger.warning(f"停止任务 {tid} 的服务时出错: {str(e)}", exc_info=True)
-                # 不抛出异常，允许任务停止但服务可能未停止
 
         threading.Thread(
             target=_teardown,
-            args=(task_id,),
+            args=(task_id, stop_request_id, app),
             daemon=True,
             name=f"stop-task-{task_id}",
         ).start()
