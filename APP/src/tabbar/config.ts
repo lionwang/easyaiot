@@ -87,35 +87,54 @@ export const customTabbarList: CustomTabBarItem[] = [
   //   iconActive: '/static/tabbar/homeHL.png',
   // },
   // add by 芋艿：图标可到 https://icon-sets.iconify.design/carbon/ 选择。另外，需要在 uno.config.ts 的 safelist 中添加图标类名
+  /** EasyAIoT 移动端核心 Tab：设备 / 推流 / 算法 / 告警 / 模型 / 推理 / 训练 / 我的 */
   {
-    text: '工作台',
-    pagePath: 'pages/index/index',
+    text: '设备',
+    pagePath: 'pages/device/index',
     iconType: 'unocss',
-    icon: 'i-carbon-home',
+    icon: 'i-carbon-video',
   },
   {
-    text: '审批',
-    pagePath: 'pages/bpm/index',
+    text: '推流',
+    pagePath: 'pages/stream-forward/index',
     iconType: 'unocss',
-    icon: 'i-carbon-document',
+    icon: 'i-carbon-flow-stream',
   },
   {
-    text: '通讯录',
-    pagePath: 'pages/contact/index',
+    text: '算法',
+    pagePath: 'pages/algorithm/index',
     iconType: 'unocss',
-    icon: 'i-carbon-user-avatar',
+    icon: 'i-carbon-task-settings',
   },
   {
-    text: '消息',
-    pagePath: 'pages/message/index',
+    text: '告警',
+    pagePath: 'pages/alert/index',
     iconType: 'unocss',
-    icon: 'i-carbon-chat',
+    icon: 'i-carbon-warning',
+  },
+  {
+    text: '模型',
+    pagePath: 'pages/model/index',
+    iconType: 'unocss',
+    icon: 'i-carbon-cube',
+  },
+  {
+    text: '推理',
+    pagePath: 'pages/inference/index',
+    iconType: 'unocss',
+    icon: 'i-carbon-ai-results',
+  },
+  {
+    text: '训练',
+    pagePath: 'pages/train/index',
+    iconType: 'unocss',
+    icon: 'i-carbon-model-builder',
   },
   {
     text: '我的',
     pagePath: 'pages/user/index',
     iconType: 'unocss',
-    icon: 'i-carbon-user',
+    icon: 'i-carbon-user-avatar',
   },
 ]
 

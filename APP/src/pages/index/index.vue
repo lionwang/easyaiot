@@ -24,7 +24,6 @@ defineOptions({
 })
 
 definePage({
-  type: 'home',
   style: {
     navigationStyle: 'custom',
   },
