@@ -435,18 +435,6 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
   <img src=".image/banner/banner-video1001.gif" alt="Screenshot 1" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" style="width: 49%; margin-right: 10px; aspect-ratio: 1855/1049; object-fit: contain;">
-  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" style="width: 49%; aspect-ratio: 1855/1049; object-fit: contain;">
-</div>
-<div>
-  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" style="width: 49%; margin-right: 10px; aspect-ratio: 1855/1049; object-fit: contain;">
-  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" style="width: 49%; aspect-ratio: 1855/1049; object-fit: contain;">
-</div>
-<div>
-  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" style="width: 49%; margin-right: 10px; aspect-ratio: 1855/1049; object-fit: contain;">
-  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" style="width: 49%; aspect-ratio: 1855/1049; object-fit: contain;">
-</div>
-<div>
   <img src=".image/banner/banner1001.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1076.jpg" alt="Screenshot 1" width="49%">
 </div>
@@ -697,6 +685,18 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 <div>
   <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
 </div>
 
 ## 📞 联系方式

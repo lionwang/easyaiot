@@ -435,18 +435,6 @@ EasyAIoT是一個開源學習項目，與商業行為無關。用戶在使用該
   <img src=".image/banner/banner-video1001.gif" alt="Screenshot 1" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
   <img src=".image/banner/banner1001.png" alt="Screenshot 1" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1076.jpg" alt="Screenshot 1" width="49%">
 </div>
@@ -689,6 +677,18 @@ EasyAIoT是一個開源學習項目，與商業行為無關。用戶在使用該
 <div>
   <img src=".image/banner/banner1005.png" alt="Screenshot 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Screenshot 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Screenshot 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Screenshot 1" width="49%">
 </div>
 
 ## 🛠️ 服務支持

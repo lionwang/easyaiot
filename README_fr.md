@@ -435,18 +435,6 @@ EasyAIoT est un projet d'apprentissage open source, sans lien avec des activité
   <img src=".image/banner/banner-video1001.gif" alt="Capture d'écran 1" width="49%">
 </div>
 <div>
-  <img src=".image/banner/banner1137.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1138.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1139.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1140.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1141.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1142.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
   <img src=".image/banner/banner1001.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1076.jpg" alt="Capture d'écran 1" width="49%">
 </div>
@@ -689,6 +677,18 @@ EasyAIoT est un projet d'apprentissage open source, sans lien avec des activité
 <div>
   <img src=".image/banner/banner1005.png" alt="Capture d'écran 15" width="49%" style="margin-right: 10px">
   <img src=".image/banner/banner1002.png" alt="Capture d'écran 16" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1137.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1138.jpg" alt="Capture d'écran 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1139.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1140.jpg" alt="Capture d'écran 1" width="49%">
+</div>
+<div>
+  <img src=".image/banner/banner1141.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner1142.jpg" alt="Capture d'écran 1" width="49%">
 </div>
 
 ## 🛠️ Support de service
