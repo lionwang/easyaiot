@@ -21,23 +21,23 @@ export interface FaqCategory {
 export const faqList: FaqCategory[] = [
   {
     icon: 'github-filled',
-    title: '芋道问题',
+    title: 'EasyAIoT 问题',
     childList: [
       {
-        title: '芋道开源吗？',
+        title: 'EasyAIoT 开源吗？',
         content: '开源，基于 MIT 协议，可免费商用。',
       },
       {
-        title: '芋道可以商用吗？',
-        content: '可以，芋道采用 MIT 开源协议，允许商业使用。',
+        title: 'EasyAIoT 可以商用吗？',
+        content: '可以，EasyAIoT 采用 MIT 开源协议，允许商业使用。',
       },
       {
-        title: '芋道官网地址多少？',
-        content: 'https://www.iocoder.cn',
+        title: 'EasyAIoT 官网地址多少？',
+        content: 'https://gitee.com/soaring-xiongkulu/easyaiot',
       },
       {
-        title: '芋道文档地址多少？',
-        content: 'https://doc.iocoder.cn',
+        title: 'EasyAIoT 文档地址多少？',
+        content: 'https://github.com/soaring-xiongkulu/easyaiot',
       },
     ],
   },
