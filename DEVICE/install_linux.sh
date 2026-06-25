@@ -141,11 +141,11 @@ apply_device_profile_env() {
     ensure_deploy_profile
     if is_mini_deploy_profile; then
         export IOT_SYSTEM_SPRING_PROFILES_ACTIVE=local,mini
-        export IOT_SINK_SPRING_PROFILES_ACTIVE=local,mini
     else
         export IOT_SYSTEM_SPRING_PROFILES_ACTIVE=local
-        export IOT_SINK_SPRING_PROFILES_ACTIVE=local
     fi
+    export IOT_SINK_SPRING_PROFILES_ACTIVE
+    IOT_SINK_SPRING_PROFILES_ACTIVE="$(iot_sink_spring_profiles_active)"
 }
 
 compose_up_detached() {

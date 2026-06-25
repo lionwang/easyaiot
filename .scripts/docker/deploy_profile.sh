@@ -97,6 +97,25 @@ is_mini_deploy_profile() {
     [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "mini" ]
 }
 
+# mini / standard 形态均不部署 TDengine 中间件
+is_tdengine_disabled_deploy_profile() {
+    case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
+        mini|standard) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# iot-sink Spring Profile（local + 形态专用 profile）
+iot_sink_spring_profiles_active() {
+    if is_mini_deploy_profile; then
+        echo "local,mini"
+    elif is_tdengine_disabled_deploy_profile; then
+        echo "local,standard"
+    else
+        echo "local"
+    fi
+}
+
 # DEVICE 是否需要 tdengine compose profile
 device_compose_profile_flags() {
     case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
