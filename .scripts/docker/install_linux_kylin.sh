@@ -806,6 +806,36 @@ install_linux() {
     print_section "开始安装所有服务 (麒麟系统)"
     
     select_deploy_profile_for_install
+
+    # 镜像获取方式：默认从远程拉取预构建镜像；回车即 y
+    local _do_local_build=0
+    if [ -t 0 ]; then
+        print_info "========================================"
+        print_info "  镜像获取方式"
+        print_info "========================================"
+        print_info "  1) 拉取预构建镜像：从远程仓库下载（快速，默认）"
+        print_info "  2) 本地构建：编译并制作 Docker 镜像（耗时较长）"
+        echo ""
+        read -r -p "是否从远程仓库下载预构建的镜像？(Y/n) " _pull_response
+        case "${_pull_response:-Y}" in
+            n|N|no|NO) _do_local_build=1 ;;
+            *) _do_local_build=0 ;;
+        esac
+    else
+        print_info "非交互模式，默认拉取预构建镜像"
+    fi
+
+    if [ "$_do_local_build" -eq 0 ]; then
+        print_info "正在拉取预构建镜像..."
+        if bash "${SCRIPT_DIR}/runtime_image.sh" pull; then
+            print_success "预构建镜像拉取成功"
+            export EASYAIOT_SKIP_BUILD=1
+        else
+            print_warning "预构建镜像拉取失败，将尝试本地构建"
+            _do_local_build=1
+        fi
+    fi
+
     detect_architecture
     check_docker "$@"
     check_docker_compose
@@ -813,10 +843,12 @@ install_linux() {
     configure_docker_mirror
     create_network
     
-    # ★ 检测 runtime_image.sh pull 是否已拉取过镜像
-    #   若已拉取，业务模块（DEVICE/AI/VIDEO/WEB）跳过 docker build，直接用 start
+    # 检测 runtime_image.sh pull 是否已拉取过镜像
+    # 若已拉取，业务模块（DEVICE/AI/VIDEO/WEB）跳过 docker build，直接用 start
     local _skip_build=0
-    if _check_pulled_images_ready; then
+    if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ]; then
+        _skip_build=1
+    elif _check_pulled_images_ready; then
         _skip_build=1
         export EASYAIOT_SKIP_BUILD=1
     fi
