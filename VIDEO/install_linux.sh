@@ -238,7 +238,7 @@ create_directories() {
     print_success "目录创建完成"
 }
 
-# 下载人脸特征提取模型（face_rec.onnx，约 167MB，不随仓库分发）
+# 检查人脸特征提取模型（face_rec.onnx，约 167MB；安装时不自动下载，请登录 WEB 人脸库页下载）
 download_face_rec_model() {
     local target="${SCRIPT_DIR}/face_rec.onnx"
     if [ -d "$target" ]; then
@@ -249,17 +249,8 @@ download_face_rec_model() {
         print_success "人脸特征模型 face_rec.onnx 已存在"
         return 0
     fi
-    local dl_script="${SCRIPT_DIR}/scripts/download_face_rec_model.sh"
-    if [ ! -f "$dl_script" ]; then
-        print_warning "未找到模型下载脚本，请在人脸库页面手动下载"
-        return 0
-    fi
-    print_info "下载人脸特征提取模型 face_rec.onnx（约 167MB，首次安装需联网）..."
-    if bash "$dl_script"; then
-        print_success "人脸特征模型下载完成"
-    else
-        print_warning "人脸特征模型下载失败，可在 WEB 人脸库页面手动下载"
-    fi
+    print_warning "人脸特征模型 face_rec.onnx 未安装（约 167MB），安装过程不自动下载"
+    print_info "请登录系统后进入「摄像头 → 人脸库」，按页面提示下载并安装模型"
 }
 
 # 清理 VIDEO 服务的 compose 容器网络缓存

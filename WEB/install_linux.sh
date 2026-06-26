@@ -124,6 +124,59 @@ web_image_profile_matches() {
     [ "$built_profile" = "$current_profile" ]
 }
 
+# 当前部署形态对应的 WEB 镜像本地标签（与 runtime_image.sh local_ref 一致）
+web_profile_image_ref() {
+    ensure_deploy_profile
+    case "${EASYAIOT_DEPLOY_PROFILE:-full}" in
+        mini)     echo "web-service:latest-mini" ;;
+        standard) echo "web-service:latest-standard" ;;
+        *)        echo "web-service:latest" ;;
+    esac
+}
+
+# 将形态镜像打标为 docker-compose 使用的 web-service:latest
+web_tag_compose_image() {
+    local profile_ref compose_ref="web-service:latest"
+    profile_ref=$(web_profile_image_ref)
+    if [ "$profile_ref" = "$compose_ref" ]; then
+        return 0
+    fi
+    if docker image inspect "$profile_ref" >/dev/null 2>&1; then
+        docker tag "$profile_ref" "$compose_ref"
+        print_info "已打标签: ${profile_ref} → ${compose_ref}（供 docker-compose 使用）"
+        return 0
+    fi
+    return 1
+}
+
+# 解析远端拉取的 WEB 镜像（兼容旧版误标 web-service:latest-full）
+web_resolve_pulled_image() {
+    local profile_ref legacy_ref="web-service:latest-full"
+    profile_ref=$(web_profile_image_ref)
+    if docker image inspect "$profile_ref" >/dev/null 2>&1; then
+        echo "$profile_ref"
+        return 0
+    fi
+    ensure_deploy_profile
+    if [ "${EASYAIOT_DEPLOY_PROFILE:-full}" = "full" ] && docker image inspect "$legacy_ref" >/dev/null 2>&1; then
+        docker tag "$legacy_ref" "$profile_ref" 2>/dev/null || true
+        echo "$profile_ref"
+        return 0
+    fi
+    return 1
+}
+
+# 已选择拉取远端镜像且本地镜像就绪 → 跳过 vite/docker build
+web_skip_build_from_pull() {
+    [ "${EASYAIOT_SKIP_BUILD:-0}" != "1" ] && return 1
+    local img
+    img=$(web_resolve_pulled_image) || return 1
+    web_tag_compose_image
+    record_web_deploy_profile_built "${EASYAIOT_ROOT}"
+    print_success "镜像已从远程拉取 (${img})，跳过 Docker 构建与 vite 编译"
+    return 0
+}
+
 # 组合 git 提交与 clean 写入的戳，用于 Dockerfile ARG CACHE_BUST（使 COPY 之后层在代码/clean 后重建）
 get_web_build_cache_bust() {
     local git_rev stamp
@@ -680,21 +733,16 @@ install_service() {
         exit 1
     fi
 
-    # 注意：前端构建现在在Docker容器内完成，不再需要在宿主机上构建
-    print_info "前端构建将在Docker容器内自动完成"
-    
-    print_info "构建 Docker 镜像（根据代码重新构建）..."
-    if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect web-service:latest >/dev/null 2>&1; then
-        if web_image_profile_matches; then
-            print_success "镜像已从远程拉取 (web-service:latest)，跳过构建"
-        else
-            print_warning "已拉取的镜像部署形态不匹配当前配置，将重新构建"
-            docker_build_image -t web-service:latest .
-        fi
+    if web_skip_build_from_pull; then
+        :
+    elif [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ] && docker image inspect web-service:latest >/dev/null 2>&1 && web_image_profile_matches; then
+        print_success "镜像已从远程拉取 (web-service:latest)，跳过 Docker 构建与 vite 编译"
     else
+        print_info "前端构建将在 Docker 容器内自动完成"
+        print_info "构建 Docker 镜像（根据代码重新构建）..."
         docker_build_image -t web-service:latest .
+        record_web_deploy_profile_built "${EASYAIOT_ROOT}"
     fi
-    record_web_deploy_profile_built "${EASYAIOT_ROOT}"
     
     print_info "启动服务..."
     $COMPOSE_CMD up -d

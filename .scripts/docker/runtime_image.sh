@@ -283,12 +283,12 @@ manifest_ref() {
     echo "${REGISTRY}${image_name}:${TAG}"
 }
 
-# 本地引用: local_name:tag[-profile]
+# 本地引用: local_name:tag[-profile]（full 形态省略 -full，与 remote_ref 一致）
 # 不再区分架构后缀：本机构建产物统一标签，跨架构通过远程标签区分
 local_ref() {
     local name="$1" profile="${2:-}" arch="${3:-}"
     local ref="${name}:${TAG}"
-    [ -n "$profile" ] && ref="${ref}-${profile}"
+    [ -n "$profile" ] && [ "$profile" != "full" ] && ref="${ref}-${profile}"
     echo "$ref"
 }
 
@@ -1155,10 +1155,16 @@ pull_all_images() {
         local lref; lref=$(local_ref "$lname" "$pull_profile")
 
         print_step "拉取: ${rref}"
-        if docker image inspect "$lref" >/dev/null 2>&1; then
-            print_info "${lref} 已存在，跳过"; web_ok=$((web_ok + 1)); continue
+        if pull_and_tag_image "$rref" "$lref"; then
+            web_ok=$((web_ok + 1))
+            record_web_deploy_profile_built "${PROJECT_ROOT}"
+        elif docker image inspect "$lref" >/dev/null 2>&1; then
+            print_info "${lref} 已存在，跳过"
+            web_ok=$((web_ok + 1))
+            record_web_deploy_profile_built "${PROJECT_ROOT}"
+        else
+            web_fail=$((web_fail + 1))
         fi
-        pull_and_tag_image "$rref" "$lref" && web_ok=$((web_ok + 1)) || web_fail=$((web_fail + 1))
     done
 
     # ---- 汇总 ----
