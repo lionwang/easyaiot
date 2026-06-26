@@ -2,13 +2,13 @@ services:
   # 中间件端口统一 0.0.0.0:宿主机:容器，避免部分环境仅绑定 [::] 导致本机走 127.0.0.1 连接失败。
   # Nacos Server
   # ★ 显式声明 platform 避免 ARM/AMD64 跨架构问题：
-  #   - nacos/nacos-server:v2.5.1-slim 为官方多架构镜像（linux/amd64 + linux/arm64），
+  #   - nacos/nacos-server:v2.5.1 为官方多架构镜像（linux/amd64 + linux/arm64），
   #     不声明 platform 时 Docker 优先使用本地缓存架构 → 若本地仅有 amd64 镜像则 QEMU 模拟运行，
   #     ARM 主机上性能极差且可能因 JVM 参数不兼容而启动失败
-  #   - slim 版本仅移除了 Derby 外的多余依赖，核心功能与普通版完全一致
+  #   - 不使用 slim 版：slim 内嵌 Java 8 + Derby 在 cgroup v2 宿主机上会 NPE 崩溃
   #   - 声明 ${NACOS_PLATFORM:-linux/amd64} 允许通过环境变量覆盖架构
   Nacos:
-    image: nacos/nacos-server:v2.5.1-slim
+    image: nacos/nacos-server:v2.5.1
     platform: ${NACOS_PLATFORM:-linux/amd64}
     container_name: nacos-server
     restart: always

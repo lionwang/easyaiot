@@ -3833,7 +3833,7 @@ init_databases() {
     # 全部通过则零人工介入。仅当验证失败（已有 admin 但密码与预期不一致）才回退人工确认。
     echo ""
     if middleware_service_enabled Nacos && wait_for_nacos; then
-        ensure_nacos_admin_user
+        ensure_nacos_admin_user || print_warning "Nacos 账号初始化未完成，继续尝试验证..."
         if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
             --data-urlencode "username=nacos" --data-urlencode "password=${NACOS_INIT_PASSWORD}" 2>/dev/null \
             | grep -q '"accessToken"'; then
@@ -3897,6 +3897,17 @@ _is_dev_null_oci_error() {
     grep -q "error reopening /dev/null inside container" "$1" 2>/dev/null
 }
 
+# 将服务名格式化为中文顿号分隔的可读列表
+_format_service_list() {
+    local -a services=("$@")
+    local result="" svc
+    for svc in "${services[@]}"; do
+        [ -n "$result" ] && result+="、"
+        result+="$svc"
+    done
+    echo "$result"
+}
+
 # 启动中间件容器；可选服务镜像缺失时自动跳过，避免阻塞核心中间件
 # 遇到 rootless Docker 的 /dev/null OCI 错误时自动重试（最多 3 次，退避 3/6/12s）
 compose_up_middleware() {
@@ -3924,7 +3935,7 @@ compose_up_middleware() {
     fi
 
     if [ ${#skip_services[@]} -gt 0 ]; then
-        print_warning "以下服务已跳过: ${skip_services[*]}"
+        print_warning "以下中间件因镜像缺失等原因暂不启动：$(_format_service_list "${skip_services[@]}")"
     fi
 
     # ★ 自动检测并设置 NACOS_PLATFORM，避免 ARM/AMD64 跨架构问题
@@ -3937,7 +3948,9 @@ compose_up_middleware() {
         esac
     fi
 
-    print_info "启动服务 (${EASYAIOT_DEPLOY_PROFILE:-full}): ${up_services[*]}"
+    local _svc_count=${#up_services[@]} _svc_list
+    _svc_list=$(_format_service_list "${up_services[@]}")
+    print_info "正在启动 ${_svc_count} 个中间件容器：${_svc_list}"
     local _up_log _up_rc _retry _delay
     _up_log=$(mktemp)
     mw_compose up -d "${up_services[@]}" > "$_up_log" 2>&1
@@ -4985,7 +4998,7 @@ cleanup_stale_containers() {
     fi
 
     cleanup_renamed_containers
-    fix_nacos_derby_corruption
+    fix_nacos_startup_failure
 }
 
 # 清理 compose recreate 被中断后遗留的「改名孤儿容器」（形如 <12位hex>_postgres-server）。
@@ -5000,21 +5013,15 @@ cleanup_renamed_containers() {
     echo "$names" | xargs -r docker rm -f >/dev/null 2>&1 || true
 }
 
-# Nacos 单机内嵌 Derby 库「半成品损坏」自愈：首次建库中途被打断 → 缺 service.properties，
-# 容器 restart:always 死循环（重启的是同一容器，坏数据在可写层里永远修不好）。
-# nacos 的 /home/nacos/data 未挂载卷 → 强制重建容器即拿到干净可写层，自动恢复。
-# 仅当容器当前非 healthy 且日志命中特征串才介入；健康时开销 ≈ 一次 docker inspect（毫秒级）。
-fix_nacos_derby_corruption() {
-    local health
-    health=$(docker inspect -f '{{.State.Health.Status}}' nacos-server 2>/dev/null) || return 0
-    [ "$health" = "healthy" ] && return 0
-    docker logs --tail 200 nacos-server 2>&1 | grep -q "does not contain the expected 'service.properties'" || return 0
-    print_warning "检测到 Nacos 内嵌 Derby 半成品损坏（初始化曾被中断），删除容器及其匿名卷后重建..."
-    # 必须 docker rm -v 连匿名卷一起删：镜像若对 /home/nacos/data 声明了 VOLUME（匿名卷），
-    # compose --force-recreate 默认会把旧容器的匿名卷原样带给新容器（除非 --renew-anon-volumes），
-    # 坏的 derby-data 随卷复活——实测单纯重建容器修不掉，删容器+匿名卷才彻底。
+# Nacos 官方镜像（不用 slim：cgroup v2 宿主机上 slim 内嵌 Derby 会 NPE 崩溃）
+NACOS_IMAGE="${NACOS_IMAGE:-nacos/nacos-server:v2.5.1}"
+
+# 删除 nacos-server 及其匿名卷后按 compose 重建（Derby 损坏 / cgroup 崩溃等场景共用）
+_recreate_nacos_container() {
+    local reason="$1"
+    print_warning "$reason"
+    print_info "删除 nacos-server 容器及匿名数据卷并重建（镜像: ${NACOS_IMAGE}）..."
     docker rm -f -v nacos-server >/dev/null 2>&1 || true
-    # ★ 重建前确保 nacos 镜像是当前架构版本（避免 QEMU 跨架构模拟）
     local _host_arch _nacos_platform=""
     _host_arch=$(uname -m)
     case "$_host_arch" in
@@ -5022,12 +5029,48 @@ fix_nacos_derby_corruption() {
         aarch64) _nacos_platform="linux/arm64" ;;
     esac
     if [ -n "$_nacos_platform" ]; then
-        # 强制拉取正确的架构镜像（覆盖可能缓存的错误架构版本）
-        docker pull --platform "$_nacos_platform" nacos/nacos-server:v2.5.1-slim 2>&1 | tee -a "$LOG_FILE" || true
+        print_info "拉取 Nacos 镜像 (${NACOS_IMAGE}, ${_nacos_platform})..."
+        docker pull --platform "$_nacos_platform" "$NACOS_IMAGE" 2>&1 | tee -a "$LOG_FILE" || true
         export NACOS_PLATFORM="$_nacos_platform"
     fi
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d Nacos 2>&1 | tee -a "$LOG_FILE" || true
+    mw_compose up -d Nacos 2>&1 | tee -a "$LOG_FILE" || true
     unset NACOS_PLATFORM
+}
+
+# Nacos 启动失败自愈：Derby 半成品损坏、cgroup v2 + slim 镜像崩溃、容器 Restarting 等
+fix_nacos_startup_failure() {
+    middleware_service_enabled Nacos || return 0
+    docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^nacos-server$' || return 0
+
+    local status health
+    status=$(container_status nacos-server)
+    health=$(docker inspect -f '{{.State.Health.Status}}' nacos-server 2>/dev/null) || health=""
+
+    if [ "$status" = "running" ]; then
+        if curl -s -m 2 "http://localhost:8848/nacos/actuator/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        [ "$health" = "healthy" ] && return 0
+    fi
+
+    local logs reason=""
+    logs=$(docker logs --tail 200 nacos-server 2>&1 || true)
+
+    if echo "$logs" | grep -q "does not contain the expected 'service.properties'"; then
+        reason="检测到 Nacos 内嵌 Derby 半成品损坏（初始化曾被中断）"
+    elif echo "$logs" | grep -qE "CgroupV2Subsystem\.getInstance|cgroupv2\.CgroupV2Subsystem"; then
+        reason="检测到 Nacos Derby 在 cgroup v2 宿主机启动失败（已切换为标准版镜像 ${NACOS_IMAGE}）"
+    elif echo "$status" | grep -qiE "restarting|exited|created"; then
+        reason="检测到 Nacos 容器状态异常: ${status}"
+    else
+        return 0
+    fi
+
+    _recreate_nacos_container "${reason}，正在自愈..."
+}
+
+fix_nacos_derby_corruption() {
+    fix_nacos_startup_failure
 }
 
 # Nacos 2.2.1+ 开启鉴权后不再内置默认账号：全新数据卷（首次安装或 Derby 修复重建后）里
@@ -5038,12 +5081,16 @@ NACOS_INIT_PASSWORD="${NACOS_INIT_PASSWORD:-basiclab@iot78475418754}"
 NACOS_DEFAULT_PASSWORD="${NACOS_DEFAULT_PASSWORD:-nacos}"
 ensure_nacos_admin_user() {
     docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nacos-server$' || return 0
-    # 等待 nacos 就绪（新建容器约 30-60s；已就绪时首轮即通过，常态开销≈一次curl）
-    local i resp token
-    for i in $(seq 1 45); do
-        curl -s -m 2 "http://localhost:8848/nacos/actuator/health" >/dev/null 2>&1 && break
-        sleep 2
-    done
+
+    print_info "初始化 Nacos 管理员账号与 dev 命名空间（用户 nacos，密码与各服务 bootstrap 一致）..."
+
+    if ! wait_for_nacos; then
+        print_error "Nacos 服务未就绪，无法自动初始化账号"
+        print_info "排查: docker logs nacos-server --tail 80"
+        return 1
+    fi
+
+    local resp token
 
     # 先用目标密码尝试登录；成功说明 admin 已正确初始化
     if curl -s -m 5 -X POST "http://localhost:8848/nacos/v1/auth/login" \
@@ -5118,10 +5165,11 @@ ensure_nacos_admin_user() {
         fi
     fi
 
-    print_error "Nacos admin 用户初始化失败，请手动配置"
+    print_error "Nacos admin 用户自动初始化失败，请手动配置"
     print_info "1. 登录 http://localhost:8848/nacos（默认账号 nacos/nacos）"
     print_info "2. 将 nacos 用户密码改为: ${NACOS_INIT_PASSWORD}"
     print_info "3. 创建命名空间: namespaceId=dev, namespaceName=dev"
+    print_info "4. 配置完成后可重新运行: ./install_middleware_linux.sh install"
     return 1
 }
 
@@ -5189,8 +5237,7 @@ install_middleware() {
     # 检查端口占用
     check_and_clean_ports
     
-    print_section "启动 Milvus 等中间件容器"
-    print_info "启动所有中间件服务..."
+    print_section "启动中间件容器"
     # 取 PIPESTATUS[0] 判定（tee 恒 0，`if 管道` 永远走成功分支，失败会被掩盖）
     local -a _skip_optional=()
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
@@ -5204,9 +5251,6 @@ install_middleware() {
         show_unhealthy_containers
     fi
 
-    # Nacos 全新数据卷需初始化 admin 账号与 dev 命名空间（幂等，已初始化则瞬时跳过）
-    ensure_nacos_admin_user
-    
     # 如果 SRS 容器已经在运行，重启它以重新加载配置文件
     if docker ps --filter "name=srs-server" --format "{{.Names}}" | grep -q "srs-server"; then
         print_info "检测到 SRS 容器正在运行，重启以重新加载配置文件..."
@@ -5265,6 +5309,19 @@ install_middleware() {
         echo ""
         # 二次修复：status 检查后可能有容器进入 Created 状态（compose_up 之后的延迟启动）
         _repair_created_middleware_containers || true
+    fi
+
+    # Nacos 启动失败自愈 + 账号初始化（非致命：不中断后续 PostgreSQL/MinIO 等步骤）
+    if middleware_service_enabled Nacos; then
+        print_section "配置 Nacos 注册中心"
+        fix_nacos_startup_failure
+        if wait_for_nacos; then
+            ensure_nacos_admin_user || print_warning "Nacos 账号自动初始化未完成，init_databases 阶段将再次尝试"
+        else
+            print_error "Nacos 服务未就绪，业务服务将无法注册到配置中心"
+            print_info "排查命令: docker logs nacos-server --tail 80"
+            docker logs --tail 30 nacos-server 2>&1 | tee -a "$LOG_FILE" || true
+        fi
     fi
 
     # 等待 Milvus 就绪并输出部署日志
@@ -5372,7 +5429,6 @@ start_middleware() {
     # 检查端口占用
     check_and_clean_ports
     
-    print_info "启动所有中间件服务..."
     local -a _skip_optional=()
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
     # 用 if 包裹以防止 compose_up 返回非零时触发 set -e（如 ZLMediaKit rlimit 等非致命错误）
@@ -5381,8 +5437,13 @@ start_middleware() {
     else
         _up_rc=$?
     fi
-    ensure_nacos_admin_user
-    
+    if middleware_service_enabled Nacos; then
+        print_section "配置 Nacos 注册中心"
+        fix_nacos_startup_failure
+        wait_for_nacos || print_warning "Nacos 未就绪"
+        ensure_nacos_admin_user || print_warning "Nacos 账号自动初始化未完成"
+    fi
+
     if [ "${_up_rc:-0}" -eq 0 ]; then
         print_success "所有中间件启动完成"
     else
@@ -5826,7 +5887,7 @@ update_middleware() {
     check_and_pull_images
     
     cleanup_renamed_containers
-    fix_nacos_derby_corruption
+    fix_nacos_startup_failure
     print_info "重启所有中间件服务..."
     local -a _skip_optional=()
     read -r -a _skip_optional <<< "$(collect_skippable_optional_services)"
@@ -5836,7 +5897,12 @@ update_middleware() {
     else
         _up_rc=$?
     fi
-    ensure_nacos_admin_user
+    if middleware_service_enabled Nacos; then
+        print_section "配置 Nacos 注册中心"
+        fix_nacos_startup_failure
+        wait_for_nacos || print_warning "Nacos 未就绪"
+        ensure_nacos_admin_user || print_warning "Nacos 账号自动初始化未完成"
+    fi
 
     if [ "${_up_rc}" -eq 0 ]; then
         print_success "所有中间件更新完成"
