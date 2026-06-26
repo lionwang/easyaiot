@@ -70,6 +70,9 @@ VIDEO/face_rec.onnx binary -diff
 # AI 模型权重目录（体积大，ModelScope/本地下载，不参与 diff）
 AI/models/** -diff
 
+# WEB 预构建前端缓存（runtime_image.sh 提取，体积大，不参与 diff）
+WEB/dist-prebuilt-mini/** -diff
+
 # APP 构建产物、依赖与 pnpm 缓存：不参与 diff
 APP/node_modules/** -diff
 APP/dist/** -diff

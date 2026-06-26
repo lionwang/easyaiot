@@ -30,6 +30,12 @@ DEVICE_LOCAL_NAMES=(
     iot-module-file-biz iot-module-message-biz iot-sink-biz iot-gb28181-biz
 )
 
+# 与 DEVICE_REMOTE_NAMES / DEVICE_LOCAL_NAMES 下标一一对应（docker-compose 服务名）
+DEVICE_COMPOSE_SERVICES=(
+    iot-gateway iot-system iot-infra iot-device iot-dataset
+    iot-node iot-tdengine iot-file iot-message iot-sink iot-gb28181
+)
+
 INDEPENDENT_MODULES=(
     "aiot-ai|ai-service|AI"
     "aiot-video|video-service|VIDEO"
@@ -606,6 +612,45 @@ runtime_profile_label() {
     esac
 }
 
+# pull / install 就绪检测：该 DEVICE 镜像是否属于当前部署形态实际会启动的服务
+# 逻辑与 deploy_profile.sh 中 device_skipped_services / device_enabled_services 一致
+runtime_device_image_needed_for_pull() {
+    local idx="$1" profile="${2:-${EASYAIOT_DEPLOY_PROFILE:-full}}"
+    local compose_svc="${DEVICE_COMPOSE_SERVICES[$idx]:-}"
+    [ -z "$compose_svc" ] && return 1
+
+    if ! declare -F device_skipped_services >/dev/null 2>&1 \
+        || ! declare -F device_enabled_services >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local saved_profile="${EASYAIOT_DEPLOY_PROFILE:-full}"
+    local enabled="" skips="" e s
+    export EASYAIOT_DEPLOY_PROFILE="$profile"
+    enabled=$(device_enabled_services)
+    skips=$(device_skipped_services)
+    export EASYAIOT_DEPLOY_PROFILE="$saved_profile"
+
+    if [ -n "$enabled" ]; then
+        for e in $enabled; do
+            [ "$e" = "$compose_svc" ] && return 0
+        done
+        return 1
+    fi
+    for s in $skips; do
+        [ "$s" = "$compose_svc" ] && return 1
+    done
+    return 0
+}
+
+runtime_device_pull_count_for_profile() {
+    local profile="$1" count=0 i
+    for i in "${!DEVICE_REMOTE_NAMES[@]}"; do
+        runtime_device_image_needed_for_pull "$i" "$profile" && count=$((count + 1))
+    done
+    echo "$count"
+}
+
 # ============================================================================
 # 拉取标记与本地镜像就绪检测
 # ============================================================================
@@ -639,8 +684,14 @@ runtime_images_pulled_ready() {
     local -a check_images=(
         "ai-service:${pull_tag:-latest}"
         "video-service:${pull_tag:-latest}"
-        "iot-gateway:${pull_tag:-latest}"
     )
+    local _di _dlname
+    for _di in "${!DEVICE_LOCAL_NAMES[@]}"; do
+        if runtime_device_image_needed_for_pull "$_di" "${pull_profile:-full}"; then
+            _dlname="${DEVICE_LOCAL_NAMES[$_di]}"
+            check_images+=("${_dlname}:${pull_tag:-latest}")
+        fi
+    done
     case "${pull_profile:-full}" in
         mini)     check_images+=("web-service:${pull_tag:-latest}-mini") ;;
         standard) check_images+=("web-service:${pull_tag:-latest}-standard") ;;
@@ -864,6 +915,12 @@ runtime_images_invoke() {
 runtime_images_usage() {
     cat <<EOF
 运行时镜像管理（业务模块 DEVICE/AI/VIDEO/WEB/APP，不含中间件；APP 仅 full）
+
+pull 按部署形态过滤 DEVICE 镜像（与 compose 启停一致）：
+  mini     — 仅拉 aiot-system（1/11）
+  standard — 跳过 aiot-device、aiot-tdengine（9/11）
+  full     — 拉全部 DEVICE（11/11）
+  build-runtime 仍构建/推送全量 DEVICE，供各形态共用远程仓库
 
 推荐入口（交互式，无需携带参数，默认部署形态 full）:
   bash .scripts/docker/install_linux.sh pull

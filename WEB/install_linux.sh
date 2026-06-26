@@ -858,8 +858,15 @@ build_image() {
     check_docker
     check_docker_compose
 
-    if [ "${FORCE_REBUILD:-0}" != "1" ] && docker image inspect web-service:latest >/dev/null 2>&1; then
-        print_success "web-service:latest 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+    local profile_ref
+    profile_ref=$(web_profile_image_ref)
+
+    # runtime_image.sh 按形态推送 web-service:latest-{mini|standard}；须检查形态标签而非仅 latest
+    if [ "${FORCE_REBUILD:-0}" != "1" ] \
+        && docker image inspect "$profile_ref" >/dev/null 2>&1 \
+        && web_image_profile_matches; then
+        print_success "${profile_ref} 已存在，跳过 Docker 构建（强制重建请设置 FORCE_REBUILD=1）"
+        web_tag_compose_image || true
         return 0
     fi
 
@@ -870,10 +877,11 @@ build_image() {
     # 勿用 --no-cache：会强制重跑 pnpm fetch/install（数分钟），且 hoisted+store cache mount 下
     # 可能出现 install 打印 Done 后进程仍挂起。源码变更由 CACHE_BUST 触发 vite 重编；全量重建请先 clean。
     local build_rc=0
-    docker_build_image -t web-service:latest . || build_rc=$?
+    docker_build_image -t "$profile_ref" . || build_rc=$?
     record_web_deploy_profile_built "${EASYAIOT_ROOT}"
+    web_tag_compose_image || true
     if [ $build_rc -eq 0 ]; then
-        print_success "镜像构建完成"
+        print_success "镜像构建完成: ${profile_ref}"
     else
         print_error "镜像构建失败 (exit=${build_rc})"
     fi

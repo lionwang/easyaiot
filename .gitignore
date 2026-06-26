@@ -9,6 +9,8 @@
 # WEB docker build 输出日志（与 WEB/.gitignore 中 docker-build-logs/*、!.gitkeep 一致）
 /WEB/docker-build-logs/*
 !/WEB/docker-build-logs/.gitkeep
+# WEB 预构建前端缓存（runtime_image.sh 提取，体积大，勿提交）
+/WEB/dist-prebuilt-mini/
 .idea
 
 # BlueJ files

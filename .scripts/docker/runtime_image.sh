@@ -52,11 +52,10 @@
 #         docker.cnb.cool/holmesian/easyaiot/aiot-web-mini:v1.0.0
 #
 # 镜像映射（远程 → 本地）:
-#   共享镜像（全形态通用）:
+#   共享镜像（全形态通用，pull 时按形态跳过不会启动的 DEVICE 服务）:
 #     docker.cnb.cool/holmesian/easyaiot/aiot-ai:amd64       → ai-service:latest
 #     docker.cnb.cool/holmesian/easyaiot/aiot-video:amd64    → video-service:latest
-#     docker.cnb.cool/holmesian/easyaiot/aiot-gateway:amd64  → iot-gateway:latest
-#     ... （所有 DEVICE 模块）
+#     mini 仅拉 aiot-system；standard 跳过 aiot-device/aiot-tdengine；full 拉全部 DEVICE
 #   形态相关镜像（WEB，全量形态均构建/推送）:
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web:amd64          → web-service:latest          (full)
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web-mini:amd64     → web-service:latest-mini     (mini)
@@ -1303,10 +1302,14 @@ pull_all_images() {
     select_pull_profile
     local pull_profile="${EASYAIOT_DEPLOY_PROFILE}"
 
-    local shared_ok=0 shared_fail=0
+    local shared_ok=0 shared_fail=0 shared_skipped=0
+    local device_pull_total
+    device_pull_total=$(runtime_device_pull_count_for_profile "$pull_profile")
 
     # ---- 共享模块 ----
     print_header "阶段 1/2：拉取共享镜像（架构: ${CURRENT_ARCH}）"
+    echo ""
+    print_info "DEVICE 镜像：${pull_profile} 形态需拉取 ${device_pull_total}/${#DEVICE_REMOTE_NAMES[@]} 个（其余运行时不会启动，已跳过）"
     echo ""
     for mapping in "${INDEPENDENT_MODULES[@]}"; do
         local rname="${mapping%%|*}"; local tmp="${mapping#*|}"; local lname="${tmp%%|*}"
@@ -1321,9 +1324,14 @@ pull_all_images() {
         fi
         pull_and_tag_image "$rref" "$lref" && shared_ok=$((shared_ok + 1)) || shared_fail=$((shared_fail + 1))
     done
-    # DEVICE 模块
+    # DEVICE 模块（按部署形态过滤，仅拉取 compose 会启动的服务）
     for i in "${!DEVICE_REMOTE_NAMES[@]}"; do
         local rname="${DEVICE_REMOTE_NAMES[$i]}"; local lname="${DEVICE_LOCAL_NAMES[$i]}"
+        if ! runtime_device_image_needed_for_pull "$i" "$pull_profile"; then
+            print_info "跳过 ${rname} → ${lname}（${pull_profile} 形态不部署 ${DEVICE_COMPOSE_SERVICES[$i]}）"
+            shared_skipped=$((shared_skipped + 1))
+            continue
+        fi
         local rref; rref=$(remote_ref "$rname" "" "$CURRENT_ARCH")
         local lref; lref=$(local_ref "$lname")
 
@@ -1349,18 +1357,18 @@ pull_all_images() {
         done
     fi
 
-    # 共享镜像总数 = 非形态相关的独立模块 + DEVICE 模块 +（full 时）APP
+    # 共享镜像总数 = 非形态相关的独立模块 + 当前形态需要的 DEVICE +（full 时）APP
     local shared_total=0
     for mapping in "${INDEPENDENT_MODULES[@]}"; do
         local rname="${mapping%%|*}"
         is_profile_dependent "$rname" || shared_total=$((shared_total + 1))
     done
-    shared_total=$((shared_total + ${#DEVICE_REMOTE_NAMES[@]}))
+    shared_total=$((shared_total + device_pull_total))
     if [ "$pull_profile" = "full" ]; then
         shared_total=$((shared_total + ${#FULL_ONLY_MODULES[@]}))
     fi
     echo ""
-    print_info "共享镜像: 成功 ${shared_ok}/${shared_total}, 失败 ${shared_fail}/${shared_total}"
+    print_info "共享镜像: 成功 ${shared_ok}/${shared_total}, 失败 ${shared_fail}/${shared_total}, 跳过 ${shared_skipped} 个 DEVICE"
 
     # ---- WEB 形态镜像 ----
     print_header "阶段 2/2：拉取 WEB 镜像（形态: $(_profile_label "$pull_profile"), 架构: ${CURRENT_ARCH}）"
@@ -1453,7 +1461,9 @@ EOF
             fi
         done
     done
-    for lname in "${DEVICE_LOCAL_NAMES[@]}"; do
+    for i in "${!DEVICE_LOCAL_NAMES[@]}"; do
+        runtime_device_image_needed_for_pull "$i" "$pull_profile" || continue
+        local lname="${DEVICE_LOCAL_NAMES[$i]}"
         local lref; lref=$(local_ref "$lname")
         if docker image inspect "$lref" >/dev/null 2>&1; then
             local size; size=$(docker image inspect "$lref" --format '{{.Size}}' 2>/dev/null | awk '{printf "%.1f MB", $1/1024/1024}')
