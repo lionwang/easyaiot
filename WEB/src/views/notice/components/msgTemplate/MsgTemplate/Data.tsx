@@ -3,35 +3,6 @@ import type { Rule } from 'ant-design-vue/es/form';
 import corpMessage from '@/assets/images/corp-message.png';
 import feishuLogo from '@/assets/images/notice/feishu.png';
 
-/** 模板元信息（用于判断推送是否需要用户分组） */
-export type PushTemplateMeta = {
-  radioType?: string;
-  webHook?: string;
-};
-
-/**
- * 推送任务是否需要选择用户分组
- * - 短信/邮件：必须
- * - HTTP/飞书：Webhook 在模板中，不需要
- * - 企微/钉钉：仅「工作通知方式」需要；群机器人不需要
- */
-export function needsPushUserGroup(
-  msgType: number | string | null | undefined,
-  templateMeta?: PushTemplateMeta | null,
-): boolean {
-  const t = String(msgType ?? '');
-  if (t === '5' || t === '7') return false;
-  if (t === '1' || t === '2' || t === '3') return true;
-  if (t === '4' || t === '6') {
-    if (!templateMeta) return false;
-    const { radioType, webHook } = templateMeta;
-    if (radioType === '群机器人消息') return false;
-    if (webHook && String(webHook).trim()) return false;
-    return radioType === '工作通知方式';
-  }
-  return true;
-}
-
 // 消息模板表单（不含推送专用字段）
 export const templateFormSchemas = ({ isVariable }) => {
   return [
@@ -54,9 +25,7 @@ export const templateFormSchemas = ({ isVariable }) => {
       helpMessage: '算法任务告警通知时从此分组解析默认通知人（可选）',
       ifShow: ({ values }) => {
         const msgType = String(values?.msgType ?? '');
-        if (msgType === '5' || msgType === '7') return false;
-        if (values?.radioType === '群机器人消息') return false;
-        return true;
+        return msgType !== '5' && msgType !== '7';
       },
     },
     {
@@ -81,23 +50,6 @@ export const formSchemas = ({ isVariable }) => {
       },
     },
     {
-      field: 'msgType',
-      component: 'Input',
-      colProps: {
-        span: 0,
-      },
-    },
-    {
-      field: 'templateRadioType',
-      component: 'Input',
-      colProps: { span: 0 },
-    },
-    {
-      field: 'templateWebHook',
-      component: 'Input',
-      colProps: { span: 0 },
-    },
-    {
       field: 'msgName',
       component: 'Input',
       required: true,
@@ -115,23 +67,26 @@ export const formSchemas = ({ isVariable }) => {
       component: 'Input',
       label: '用户分组',
       slot: 'userGroupId',
-      helpMessage: '工作通知、短信、邮件需选择收件人分组；群机器人/Webhook 类模板无需分组',
       dynamicRules: ({ values }) => {
-        if (
-          !needsPushUserGroup(values?.msgType, {
-            radioType: values?.templateRadioType,
-            webHook: values?.templateWebHook,
-          })
-        ) {
+        const msgType = String(values?.msgType ?? '');
+        if (msgType === '5' || msgType === '7') {
+          return [];
+        }
+        if (values?.radioType === '群机器人消息') {
           return [];
         }
         return [{ required: true, message: '请选择用户分组', trigger: ['change', 'blur'] }];
       },
-      ifShow: ({ values }) =>
-        needsPushUserGroup(values?.msgType, {
-          radioType: values?.templateRadioType,
-          webHook: values?.templateWebHook,
-        }),
+      ifShow: ({ values }) => {
+        const msgType = String(values?.msgType ?? '');
+        if (msgType === '5' || msgType === '7') {
+          return false;
+        }
+        if (values?.radioType === '群机器人消息') {
+          return false;
+        }
+        return true;
+      },
     },
     {
       field: 'variableDefinitions',

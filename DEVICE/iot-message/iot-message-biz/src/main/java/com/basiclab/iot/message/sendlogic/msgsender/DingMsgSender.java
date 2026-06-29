@@ -16,6 +16,7 @@ import com.basiclab.iot.message.domain.entity.MessageConfig;
 import com.basiclab.iot.message.domain.entity.TMsgDing;
 import com.basiclab.iot.message.domain.model.SendResult;
 import com.basiclab.iot.message.mapper.TMsgDingMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import com.basiclab.iot.message.mapper.TPreviewUserGroupMapper;
 import com.basiclab.iot.message.mapper.TPreviewUserMapper;
 import com.basiclab.iot.message.sendlogic.PushControl;
@@ -58,6 +59,9 @@ public class DingMsgSender implements IMsgSender {
     private TMsgDingMapper tMsgDingMapper;
 
     @Autowired
+    private MessageRecordResolver messageRecordResolver;
+
+    @Autowired
     private MessageConfigService messageConfigService;
 
     @Autowired
@@ -69,7 +73,7 @@ public class DingMsgSender implements IMsgSender {
     @Override
     public SendResult send(String msgId) {
         log.info("钉钉发送开始 params is:"+msgId);
-        TMsgDing tMsgDing = tMsgDingMapper.selectByPrimaryKey(msgId);
+        TMsgDing tMsgDing = messageRecordResolver.resolveDing(msgId);
         if (tMsgDing == null) {
             SendResult sendResult = new SendResult();
             sendResult.setSuccess(false);

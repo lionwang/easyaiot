@@ -177,15 +177,17 @@
         },
       },
       {
-        title: '消息名称',
+        title: '推送名称',
         dataIndex: 'msgName',
+      },
+      {
+        title: '消息模板',
+        dataIndex: 'templateName',
       },
       {
         title: '用户组',
         dataIndex: 'userGroupName',
-        ifShow: () => {
-          return !['http', 'feishu'].includes(props.pushType);
-        },
+        ifShow: () => !['http', 'feishu'].includes(props.pushType),
       },
       ...props.columns,
       {
@@ -268,10 +270,19 @@
   };
 
   function canTestSend(record) {
+    if (!record?.refTemplateId && !record?.id) {
+      return false;
+    }
+    // Webhook / 飞书：无需用户分组
     if (props.pushType === 'http' || props.pushType === 'feishu') {
       return true;
     }
-    return record?.radioType === '群机器人消息' || !!record?.webHook;
+    // 企微/钉钉群机器人：推送记录无 userGroupId
+    if (['weixin', 'ding'].includes(props.pushType) && !record?.userGroupId) {
+      return true;
+    }
+    // 短信/邮件/工作通知：需有用户分组
+    return !!record?.userGroupId;
   }
 
   const handleTestSend = (record) => handleStartPush(record, true);

@@ -17,6 +17,8 @@
         <result column="modified_time" jdbcType="TIMESTAMP" property="modifiedTime"/>
         <result column="preview_user" jdbcType="VARCHAR" property="previewUser"/>
         <result column="user_group_id" jdbcType="VARCHAR" property="userGroupId"/>
+        <result column="record_type" jdbcType="INTEGER" property="recordType"/>
+        <result column="ref_template_id" jdbcType="VARCHAR" property="refTemplateId"/>
         <result column="radio_type" jdbcType="VARCHAR" property="radioType"/>
         <result column="web_hook" jdbcType="VARCHAR" property="webHook"/>
     </resultMap>
@@ -43,13 +45,14 @@
                                  title, img_url, describe,
                                  url, btn_txt, create_time,
                                  modified_time, preview_user, user_group_id,
-                                 radio_type, web_hook)
+                                 radio_type, web_hook, record_type, ref_template_id)
         values (#{id,jdbcType=INTEGER}, #{msgType,jdbcType=INTEGER}, #{msgName,jdbcType=VARCHAR},
                 #{cpMsgType,jdbcType=VARCHAR}, #{agentId,jdbcType=VARCHAR}, #{content,jdbcType=VARCHAR},
                 #{title,jdbcType=VARCHAR}, #{imgUrl,jdbcType=VARCHAR}, #{describe,jdbcType=VARCHAR},
                 #{url,jdbcType=VARCHAR}, #{btnTxt,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP},
                 #{modifiedTime,jdbcType=TIMESTAMP}, #{previewUser,jdbcType=VARCHAR}, #{userGroupId,jdbcType=VARCHAR},
-                #{radioType,jdbcType=VARCHAR}, #{webHook,jdbcType=VARCHAR})
+                #{radioType,jdbcType=VARCHAR}, #{webHook,jdbcType=VARCHAR},
+                #{recordType,jdbcType=INTEGER}, #{refTemplateId,jdbcType=VARCHAR})
     </insert>
     <insert id="insertSelective" parameterType="com.basiclab.iot.message.domain.entity.TMsgWxCp" useGeneratedKeys="true"
             keyColumn="id" keyProperty="id">
@@ -206,7 +209,13 @@
             <if test="userGroupId != null">
                 user_group_id = #{userGroupId,jdbcType=VARCHAR},
             </if>
-            <if test="radioType != null">
+                        <if test="recordType != null">
+                record_type = #{recordType,jdbcType=INTEGER},
+            </if>
+            <if test="refTemplateId != null">
+                ref_template_id = #{refTemplateId,jdbcType=VARCHAR},
+            </if>
+<if test="radioType != null">
                 radio_type = #{radioType,jdbcType=VARCHAR},
             </if>
             <if test="webHook != null">
@@ -271,6 +280,7 @@
         <include refid="Base_Column_List"/>
         from t_msg_wx_cp
         where msg_type = #{msgType,jdbcType=INTEGER}
+          and (record_type = 0 or record_type is null)
     </select>
     <delete id="deleteByMsgTypeAndName">
         delete

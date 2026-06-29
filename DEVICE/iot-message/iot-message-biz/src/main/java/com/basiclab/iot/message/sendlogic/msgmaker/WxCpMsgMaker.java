@@ -2,6 +2,7 @@ package com.basiclab.iot.message.sendlogic.msgmaker;
 
 import com.basiclab.iot.message.domain.entity.TMsgWxCp;
 import com.basiclab.iot.message.mapper.TMsgWxCpMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import me.chanjar.weixin.cp.bean.article.NewArticle;
 import me.chanjar.weixin.cp.bean.message.WxCpMessage;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,9 @@ public class WxCpMsgMaker extends BaseMsgMaker implements IMsgMaker {
     @Autowired
     private TMsgWxCpMapper tMsgWxCpMapper;
 
+    @Autowired
+    private MessageRecordResolver messageRecordResolver;
+
     /**
      * 准备(界面字段等)
      */
@@ -66,7 +70,7 @@ public class WxCpMsgMaker extends BaseMsgMaker implements IMsgMaker {
      */
     @Override
     public WxCpMessage makeMsg(String msgId) {
-        TMsgWxCp tMsgWxCp = tMsgWxCpMapper.selectByPrimaryKey(msgId);
+        TMsgWxCp tMsgWxCp = messageRecordResolver.resolveWxCp(msgId);
         if (tMsgWxCp == null) {
             return null;
         }

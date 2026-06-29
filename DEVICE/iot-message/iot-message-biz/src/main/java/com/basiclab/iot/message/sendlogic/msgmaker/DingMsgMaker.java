@@ -2,6 +2,7 @@ package com.basiclab.iot.message.sendlogic.msgmaker;
 
 import com.basiclab.iot.message.domain.entity.TMsgDing;
 import com.basiclab.iot.message.mapper.TMsgDingMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import com.basiclab.iot.message.sendlogic.msgsender.DingMsgSender;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -42,6 +43,9 @@ public class DingMsgMaker extends BaseMsgMaker implements IMsgMaker {
     @Autowired
     private TMsgDingMapper tMsgDingMapper;
 
+    @Autowired
+    private MessageRecordResolver messageRecordResolver;
+
     /**
      * 准备(界面字段等)
      */
@@ -78,7 +82,7 @@ public class DingMsgMaker extends BaseMsgMaker implements IMsgMaker {
      */
     @Override
     public TMsgDing makeMsg(String msgId) {
-        TMsgDing tMsgDing = tMsgDingMapper.selectByPrimaryKey(msgId);
+        TMsgDing tMsgDing = messageRecordResolver.resolveDing(msgId);
         return tMsgDing;
     }
 }

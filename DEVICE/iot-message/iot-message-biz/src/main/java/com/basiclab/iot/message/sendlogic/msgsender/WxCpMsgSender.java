@@ -8,6 +8,7 @@ import com.basiclab.iot.message.domain.entity.MessageConfig;
 import com.basiclab.iot.message.domain.entity.TMsgWxCp;
 import com.basiclab.iot.message.domain.model.SendResult;
 import com.basiclab.iot.message.mapper.TMsgWxCpMapper;
+import com.basiclab.iot.message.service.MessageRecordResolver;
 import com.basiclab.iot.message.mapper.TPreviewUserGroupMapper;
 import com.basiclab.iot.message.mapper.TPreviewUserMapper;
 import com.basiclab.iot.message.sendlogic.msgmaker.WxCpMsgMaker;
@@ -50,6 +51,9 @@ public class WxCpMsgSender implements IMsgSender {
     private TMsgWxCpMapper tMsgWxCpMapper;
 
     @Autowired
+    private MessageRecordResolver messageRecordResolver;
+
+    @Autowired
     private TPreviewUserMapper tPreviewUserMapper;
 
     @Autowired
@@ -59,7 +63,7 @@ public class WxCpMsgSender implements IMsgSender {
     public SendResult send(String msgId) {
         log.info("微信发送开始 params is:" + msgId);
         SendResult sendResult = new SendResult();
-        TMsgWxCp tMsgWxCp = tMsgWxCpMapper.selectByPrimaryKey(msgId);
+        TMsgWxCp tMsgWxCp = messageRecordResolver.resolveWxCp(msgId);
         if (tMsgWxCp == null) {
             sendResult.setSuccess(false);
             sendResult.setInfo("企业微信消息不存在: " + msgId);
