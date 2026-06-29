@@ -1444,7 +1444,7 @@ EOF
     else
         echo ""
         print_warning "有 ${failed_all} 个镜像拉取失败"
-        print_info "失败的镜像需要本地构建: bash .scripts/docker/install_linux.sh build-runtime"
+        runtime_print_install_local_build_help pull
         return 1
     fi
 

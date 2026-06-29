@@ -151,7 +151,7 @@ runtime_load_registry() {
 runtime_log_registry_info() {
     runtime_load_registry
     runtime_img_msg info "========================================"
-    runtime_img_msg info "  运行时镜像仓库 (CNB)"
+    runtime_img_msg info "  运行时镜像远程仓库"
     runtime_img_msg info "========================================"
     runtime_img_msg info "  当前地址: ${RUNTIME_IMAGE_REGISTRY}"
     runtime_img_msg info "  配置文件: ${RUNTIME_REGISTRY_CONFIG}"
@@ -794,6 +794,79 @@ runtime_img_msg() {
 }
 
 # ============================================================================
+# 本地构建指引（install 用户专用）
+# ============================================================================
+# 推断当前应使用的 install 入口（可由各 install 脚本 export EASYAIOT_INSTALL_SCRIPT 覆盖）
+runtime_guess_install_script() {
+    if [ -n "${EASYAIOT_INSTALL_SCRIPT:-}" ]; then
+        echo "$EASYAIOT_INSTALL_SCRIPT"
+        return 0
+    fi
+    local arch
+    arch=$(runtime_detect_arch)
+    case "$arch" in
+        arm64|arm32)
+            if [ -f /etc/.kyinfo ] || { [ -f /etc/os-release ] && grep -qiE 'kylin|neokylin' /etc/os-release; }; then
+                echo ".scripts/docker/install_linux_kylin.sh"
+            else
+                echo ".scripts/docker/install_linux_arm.sh"
+            fi
+            ;;
+        *)
+            echo ".scripts/docker/install_linux.sh"
+            ;;
+    esac
+}
+
+# 预构建镜像拉取失败或用户选择本地构建时的手动构建指引
+# context: install = install 流程内（将自动继续本地构建）; pull = 独立 pull 命令失败
+runtime_print_install_local_build_help() {
+    local context="${1:-pull}"
+    local install_script profile
+    install_script=$(runtime_guess_install_script)
+    profile="${EASYAIOT_DEPLOY_PROFILE:-full}"
+
+    echo ""
+    runtime_img_msg warn "========================================"
+    runtime_img_msg warn "  预构建镜像不可用 — 本地构建指引"
+    runtime_img_msg warn "========================================"
+    if [ "$context" = "install" ]; then
+        runtime_img_msg info "install 将自动在各模块执行 docker build，一般无需额外操作。"
+        runtime_img_msg info "若 install 已中断或需分步执行，可参考以下命令："
+    else
+        runtime_img_msg info "请在本机编译并制作 Docker 镜像，可使用以下命令："
+    fi
+    echo ""
+    runtime_img_msg info "方案 1（推荐）：一键安装（含本地构建）"
+    runtime_img_msg info "  bash ${install_script} install"
+    runtime_img_msg info "  交互提示「是否从远程仓库下载预构建的镜像？」时输入 n 可主动选择本地构建。"
+    echo ""
+    runtime_img_msg info "方案 2：先构建镜像，再启动服务"
+    runtime_img_msg info "  bash ${install_script} build     # 各模块 docker build（耗时较长）"
+    runtime_img_msg info "  bash ${install_script} start     # 镜像就绪后启动"
+    echo ""
+    if [ "$install_script" = ".scripts/docker/install_business_linux.sh" ]; then
+        runtime_img_msg info "（当前脚本仅含业务模块 DEVICE/AI/VIDEO/WEB/APP，不含中间件）"
+    else
+        runtime_img_msg info "方案 3：仅构建/安装单个模块（示例 DEVICE）"
+        runtime_img_msg info "  bash DEVICE/install_linux.sh build"
+        runtime_img_msg info "  bash DEVICE/install_linux.sh install"
+        echo ""
+        runtime_img_msg info "若中间件（Nacos/PostgreSQL 等）已单独部署，仅需业务模块："
+        runtime_img_msg info "  bash .scripts/docker/install_business_linux.sh install"
+    fi
+    echo ""
+    runtime_img_msg info "非交互环境（无 TTY，默认尝试拉取预构建镜像）："
+    runtime_img_msg info "  rm -f .scripts/docker/.runtime_images_pulled"
+    runtime_img_msg info "  bash ${install_script} build && bash ${install_script} install"
+    echo ""
+    runtime_img_msg info "当前部署形态: ${profile}（EASYAIOT_DEPLOY_PROFILE=mini|standard|full）"
+    runtime_img_msg info "预计耗时: 视机器配置约 30 分钟～数小时，请确保磁盘空间充足。"
+    runtime_img_msg warn "========================================"
+    echo ""
+}
+
+# ============================================================================
 # 统一镜像获取（install / install_business 共用）
 # ============================================================================
 # 交互询问拉取或本地构建；成功拉取后设置 EASYAIOT_SKIP_BUILD 与 EASYAIOT_SKIP_IMAGE_PROMPT
@@ -811,7 +884,10 @@ runtime_images_acquire() {
             echo ""
             read -r -p "是否从远程仓库下载预构建的镜像？(Y/n) " _pull_response
             case "${_pull_response:-Y}" in
-                n|N|no|NO) do_local_build=1 ;;
+                n|N|no|NO)
+                    do_local_build=1
+                    runtime_img_msg info "已选择本地构建，install 将在各模块自动执行 docker build（耗时较长）"
+                    ;;
                 *) do_local_build=0 ;;
             esac
         else
@@ -831,13 +907,14 @@ runtime_images_acquire() {
             runtime_img_msg ok "预构建镜像拉取成功"
             export EASYAIOT_SKIP_BUILD=1
         else
-            runtime_img_msg warn "预构建镜像拉取失败，将尝试本地构建"
+            runtime_img_msg warn "预构建镜像拉取失败，install 将自动在各模块执行本地构建"
+            runtime_print_install_local_build_help install
             do_local_build=1
         fi
     fi
 
     export EASYAIOT_SKIP_IMAGE_PROMPT=1
-    [ "$do_local_build" -eq 1 ] && return 1
+    # 本地构建是正常路径，始终 return 0（避免 install 脚本 set -e 误退出）
     return 0
 }
 
@@ -922,7 +999,13 @@ pull 按部署形态过滤 DEVICE 镜像（与 compose 启停一致）：
   full     — 拉全部 DEVICE（11/11）
   build-runtime 仍构建/推送全量 DEVICE，供各形态共用远程仓库
 
-推荐入口（交互式，无需携带参数，默认部署形态 full）:
+本地安装（含本地构建）:
+  bash .scripts/docker/install_linux.sh install       # 交互可选拉取或本地构建
+  bash .scripts/docker/install_linux.sh build         # 仅本地构建镜像
+  bash .scripts/docker/install_linux_arm.sh install   # ARM 架构
+  bash .scripts/docker/install_business_linux.sh install  # 仅业务模块
+
+远程镜像拉取/推送（交互式，默认部署形态 full）:
   bash .scripts/docker/install_linux.sh pull
   bash .scripts/docker/install_linux.sh build-runtime
   bash .scripts/docker/install_business_linux.sh pull
@@ -941,13 +1024,11 @@ pull 按部署形态过滤 DEVICE 镜像（与 compose 启停一致）：
   EASYAIOT_RUNTIME_BUILD_ARCH=all|amd64|arm64  目标架构（默认 all=全部；单架构时跳过 manifest）
   EASYAIOT_RUNTIME_FORCE_REBUILD=1       强制重建全部镜像（忽略本地缓存）
   EASYAIOT_RUNTIME_FORCE_REBUILD=0       复用本地镜像（已存在则跳过构建，直接推送）
-  EASYAIOT_SKIP_REGISTRY_AUTH_CHECK=1     跳过 build-runtime 前的 CNB 登录/推送权限检查
+  EASYAIOT_SKIP_REGISTRY_AUTH_CHECK=1     跳过 build-runtime 前的远程仓库登录/推送权限检查
   EASYAIOT_DOCKER_PUSH_RETRIES=5          推送失败时的最大重试次数（默认 5，网络抖动时自动退避重试）
   EASYAIOT_DOCKER_PUSH_RETRY_DELAY=10     推送重试初始间隔秒数（默认 10，指数退避，上限 120s）
 
-build-runtime 会在构建开始前校验 CNB 登录与推送权限；未登录请先执行:
-  docker login docker.cnb.cool -u cnb -p \${CNB_TOKEN}
-  详见 https://docs.cnb.cool/zh/artifact/docker.html
+build-runtime 会在构建开始前校验远程仓库登录与推送权限；未登录请先 docker login。
 
 也可直接调用 runtime_image.sh（支持命令行参数，适合 CI）:
   bash .scripts/docker/runtime_image.sh pull

@@ -14,7 +14,7 @@
 #   status     - 查看所有服务状态
 #   logs       - 查看服务日志
 #   build           - 重新构建所有镜像（各模块本地构建）
-#   build-runtime   - 构建/推送运行时镜像到远程仓库（等同 runtime_image.sh build；交互可选单架构）
+#   build-runtime   - 构建/推送运行时镜像到远程仓库
 #   pull            - 从远程仓库拉取预构建运行时镜像（等同 runtime_image.sh pull）
 #   clean      - 清理所有容器和镜像
 #   update     - 更新并重启所有服务
@@ -693,6 +693,7 @@ install_linux() {
     print_section "开始安装所有服务"
 
     select_deploy_profile_for_install
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux.sh"
     runtime_images_acquire
 
     check_docker "$@"
@@ -705,6 +706,8 @@ install_linux() {
     local _skip_build=0
     if runtime_images_should_skip_build; then
         _skip_build=1
+    else
+        print_info "将进行本地构建（各模块 docker build，耗时较长）"
     fi
     
     local success_count=0
@@ -1461,7 +1464,7 @@ show_help() {
     echo "  logs            - 查看所有服务日志"
     echo "  logs [模块]     - 查看指定模块日志"
     echo "  build           - 重新构建所有镜像（各模块本地构建）"
-    echo "  build-runtime   - 构建/推送运行时镜像到远程仓库（交互式，可选单架构）"
+    echo "  build-runtime   - 构建/推送运行时镜像到远程仓库"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
     echo "  update          - 更新并重启所有服务"

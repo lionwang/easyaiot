@@ -492,6 +492,7 @@ is_no() {
 
 # 镜像获取（install 时由 runtime_image_common 统一处理）
 init_runtime_images_for_install() {
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_business_linux.sh"
     runtime_images_acquire
 }
 
@@ -544,7 +545,7 @@ EasyAIoT 业务系统统一管理脚本
   status        查看状态
   logs [服务名] 查看日志（可指定模块后接服务名，如 logs DEVICE iot-gateway）
   build         重新构建镜像（各模块本地构建）
-  build-runtime 构建/推送运行时镜像到远程仓库（交互式，可选单架构）
+  build-runtime 构建/推送运行时镜像到远程仓库
   pull          从远程仓库拉取预构建运行时镜像（交互式，默认 full）
   build-base    仅 DEVICE：Maven 编译并提取 Jar（第一阶段）
   clean         清理容器（DEVICE 保留镜像）
