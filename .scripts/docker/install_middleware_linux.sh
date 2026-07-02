@@ -2119,13 +2119,11 @@ create_all_storage_directories() {
         fi
     done
 
-    # SRS 容器绑定宿主机 /data -> 容器 /data（与 docker-compose.yml 一致）
-    # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
-    # （/data 下含本仓库及全部 docker 数据，递归 chmod 会扫描海量文件导致严重卡顿）
-    # playbacks 同样不递归：录像无限增长，新文件可删性由 SRS 容器入口 umask 0000 保证
-    # （与 fix_srs.sh / srs-entrypoint.sh / install_middleware_mac.sh 约定一致）
-    run_priv mkdir -p /data/playbacks 2>/dev/null || true
-    run_priv chmod 777 /data /data/playbacks 2>/dev/null || true
+    # SRS 容器绑定宿主机 ~/easyaiot/data -> 容器 /data（与 docker-compose.yml 一致）
+    # 注意：只对数据根目录顶层和 playbacks 设权限，绝不对整个目录树递归
+    local _host_data_dir="${EASYAIOT_HOST_DATA_DIR:-$HOME/easyaiot/data}"
+    run_priv mkdir -p "${_host_data_dir}/playbacks" 2>/dev/null || true
+    run_priv chmod 777 "${_host_data_dir}" "${_host_data_dir}/playbacks" 2>/dev/null || true
     
     if [ $created_count -eq $total_count ]; then
         print_success "所有存储目录已创建并设置为777权限（${created_count}/${total_count}）"
@@ -2503,20 +2501,20 @@ wait_for_zlmediakit() {
     return 1
 }
 
-# 在安装 SRS 之前创建宿主机 /data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data；compose 挂载 /data:/data）
+# 在安装 SRS 之前创建宿主机 ~/easyaiot/data（SRS 配置中 srs_log_file、dvr_path 使用容器内 /data）
 ensure_host_data_directory_before_srs() {
-    print_info "安装 SRS 前检查宿主机目录 /data ..."
-    # 注意：只对 /data 顶层和 /data/playbacks 设权限，绝不对整个 /data 分区递归
-    # （/data 下含本仓库及全部 docker 数据，递归 chmod 会扫描海量文件导致严重卡顿）
+    local _host_data_dir="${EASYAIOT_HOST_DATA_DIR:-$HOME/easyaiot/data}"
+    print_info "安装 SRS 前检查宿主机目录 ${_host_data_dir} ..."
+    # 注意：只对数据根目录顶层和 playbacks 设权限，绝不对整个目录树递归
     local created=0
-    if run_priv mkdir -p /data/playbacks 2>/dev/null; then
-        run_priv chmod 777 /data /data/playbacks 2>/dev/null || true
+    if run_priv mkdir -p "${_host_data_dir}/playbacks" 2>/dev/null; then
+        run_priv chmod 777 "${_host_data_dir}" "${_host_data_dir}/playbacks" 2>/dev/null || true
         created=1
     fi
     if [ "$created" -eq 1 ]; then
-        print_success "宿主机目录已就绪: /data（含 playbacks 子目录）"
+        print_success "宿主机目录已就绪: ${_host_data_dir}（含 playbacks 子目录）"
     else
-        print_warning "无法在宿主机创建 /data（请使用 root/sudo 执行安装，或手动: sudo mkdir -p /data/playbacks && sudo chmod 777 /data /data/playbacks）。"
+        print_warning "无法在宿主机创建 ${_host_data_dir}（请使用 root/sudo 执行安装，或手动: mkdir -p ${_host_data_dir}/playbacks && chmod 777 ${_host_data_dir} ${_host_data_dir}/playbacks）。"
     fi
 }
 

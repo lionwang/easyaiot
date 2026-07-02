@@ -7,7 +7,10 @@
     </div>
     
     <div class="header-center">
-      <h1 class="platform-title">云边端一体算法预警监控平台</h1>
+      <div class="title-row">
+        <h1 class="platform-title">{{ dashboardTitle }}</h1>
+        <PlatformBrandingFab />
+      </div>
     </div>
     
     <div class="header-right">
@@ -19,19 +22,23 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getAdminHomeRoute } from '@/utils/deployProfile'
+import { usePlatformBranding } from '@/hooks/web/usePlatformBranding'
+import PlatformBrandingFab from './PlatformBrandingFab.vue'
 
 defineOptions({
   name: 'MonitorHeader'
 })
 
-const props = defineProps<{
+defineProps<{
   activeVideos?: any[]
 }>()
 
 const router = useRouter()
+const { config } = usePlatformBranding()
+const dashboardTitle = computed(() => config.value.dashboardTitle)
 
 const handleGoToAdmin = () => {
   const target = getAdminHomeRoute()
@@ -113,6 +120,15 @@ onUnmounted(() => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 .platform-title {

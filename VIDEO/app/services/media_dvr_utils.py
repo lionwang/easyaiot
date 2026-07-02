@@ -15,6 +15,9 @@ from app.utils.service_urls import SHANGHAI_TZ, epoch_to_shanghai_datetime
 
 logger = logging.getLogger(__name__)
 
+# 宿主机 SRS 数据根目录（与 compose volume ~/easyaiot/data:/data 一致；容器内仍为 /data）
+DEFAULT_SRS_HOST_DATA_ROOT = '~/easyaiot/data'
+
 
 def srs_dvr_min_file_bytes() -> int:
     try:
@@ -61,6 +64,55 @@ def parse_srs_dvr_path_date(absolute_file_path: str) -> Tuple[Optional[str], Opt
         return None, None
 
 
+def _candidate_srs_host_roots() -> list[str]:
+    roots: list[str] = []
+    explicit = (os.getenv('SRS_HOST_DATA_ROOT') or '').strip()
+    if explicit:
+        c = os.path.normpath(os.path.expanduser(os.path.expandvars(explicit)))
+        if c not in roots:
+            roots.append(c)
+    for raw in (os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), '/data'):
+        c = os.path.normpath(raw)
+        if c not in roots:
+            roots.append(c)
+    return roots
+
+
+def discover_srs_host_data_root() -> str:
+    """解析 SRS 录像在宿主机上的根目录（须与 SRS 容器 volume 源路径一致）。
+
+    统一约定宿主机 ``~/easyaiot/data``（compose 挂载为容器内 ``/data``）。
+    可通过 ``SRS_HOST_DATA_ROOT`` 覆盖；未配置时自动探测含 playbacks 的目录。
+    """
+    explicit = (os.getenv('SRS_HOST_DATA_ROOT') or '').strip()
+    if explicit:
+        root = os.path.normpath(os.path.expanduser(os.path.expandvars(explicit)))
+        if os.path.isdir(root):
+            return root
+
+    roots = _candidate_srs_host_roots()
+    if len(roots) == 1 and os.path.isdir(roots[0]):
+        return roots[0]
+
+    best_root: Optional[str] = None
+    best_score = -1
+    for root in roots:
+        playbacks = os.path.join(root, 'playbacks')
+        if not os.path.isdir(playbacks):
+            continue
+        try:
+            score = sum(1 for _ in os.scandir(playbacks))
+        except OSError:
+            continue
+        if score > best_score:
+            best_score = score
+            best_root = root
+
+    if best_root:
+        return best_root
+    return os.path.normpath(os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT))
+
+
 def wait_dvr_file_stable(
     absolute_file_path: str,
     max_retries: int = 12,
@@ -101,42 +153,44 @@ def resolve_playback_absolute_path(local_path: str, cwd: str = '') -> str:
         local_path = os.path.join(cwd, local_path)
 
     try:
+        p = os.path.normpath(local_path)
+    except Exception:
+        return local_path
+
+    if os.path.lexists(p):
+        return p
+
+    try:
         from cluster_storage import resolve_container_path
         mapped = resolve_container_path(local_path, cwd='')
-        if mapped != local_path:
+        if mapped != local_path and os.path.lexists(mapped):
             return mapped
     except ImportError:
         media_root = (os.getenv('MEDIA_HOST_DATA_ROOT') or os.getenv('SRS_HOST_DATA_ROOT') or '').strip()
         if media_root:
             media_root = os.path.normpath(os.path.expanduser(os.path.expandvars(media_root)))
             for prefix in ('/data', '/mnt/easyaiot-media'):
-                p = os.path.normpath(local_path)
                 if p == prefix or p.startswith(prefix + os.sep):
-                    if not os.path.lexists(p):
-                        try:
-                            rel = os.path.relpath(p, prefix)
-                            mapped = os.path.join(media_root, rel)
-                            if os.path.lexists(mapped) or prefix == '/data':
-                                return mapped
-                        except ValueError:
-                            pass
+                    try:
+                        rel = os.path.relpath(p, prefix)
+                        mapped = os.path.join(media_root, rel)
+                        if os.path.lexists(mapped):
+                            return mapped
+                    except ValueError:
+                        pass
 
     container_root = (os.getenv('SRS_CONTAINER_DATA_ROOT') or '/data').rstrip('/\\')
-    try:
-        p = os.path.normpath(local_path)
-    except Exception:
-        return local_path
     if not (p == container_root or p.startswith(container_root + os.sep)):
         return local_path
-    if os.path.lexists(p):
-        return local_path
-    host_root = (os.getenv('SRS_HOST_DATA_ROOT') or '/data').strip()
-    host_root = os.path.normpath(os.path.expanduser(os.path.expandvars(host_root)))
     try:
         rel = os.path.relpath(p, container_root)
     except ValueError:
         return local_path
-    return os.path.join(host_root, rel)
+    for host_root in _candidate_srs_host_roots():
+        mapped = os.path.join(host_root, rel)
+        if os.path.lexists(mapped):
+            return mapped
+    return os.path.join(discover_srs_host_data_root(), rel)
 
 
 def ffprobe_video_duration_seconds(video_path: str) -> float:

@@ -1,7 +1,7 @@
 """
 SRS 本地回放录像磁盘守护服务。
 
-防止 /data/playbacks（尤其 live 目录）撑满宿主机磁盘：
+防止 ~/easyaiot/data/playbacks（尤其 live 目录）撑满宿主机磁盘：
 1. MinIO 上传成功后删除本地 .flv（默认开启）
 2. 按设备/全局文件数量上限清理
 3. 按文件年龄清理孤儿录像
@@ -51,16 +51,22 @@ def _env_float(name: str, default: float) -> float:
 
 def get_srs_record_dir() -> str:
     try:
-        from cluster_storage import get_playbacks_dir
-        return get_playbacks_dir()
+        from cluster_storage import get_playbacks_dir, is_cluster_mode
+        if is_cluster_mode() or (os.getenv('MEDIA_HOST_DATA_ROOT') or '').strip():
+            return get_playbacks_dir()
     except ImportError:
-        media_record = (os.getenv('MEDIA_RECORD_DIR') or '').strip()
-        if media_record:
-            return media_record.rstrip('/\\')
-        host_root = (os.getenv('MEDIA_HOST_DATA_ROOT') or '').strip()
-        if host_root:
-            return os.path.join(host_root.rstrip('/\\'), 'playbacks')
-        return (os.getenv('SRS_RECORD_DIR') or '/data/playbacks').rstrip('/\\')
+        pass
+    media_record = (os.getenv('MEDIA_RECORD_DIR') or '').strip()
+    if media_record:
+        return media_record.rstrip('/\\')
+    srs_record = (os.getenv('SRS_RECORD_DIR') or '').strip()
+    if srs_record:
+        return srs_record.rstrip('/\\')
+    host_root = (os.getenv('MEDIA_HOST_DATA_ROOT') or '').strip()
+    if host_root:
+        return os.path.join(host_root.rstrip('/\\'), 'playbacks')
+    from app.services.media_dvr_utils import discover_srs_host_data_root
+    return os.path.join(discover_srs_host_data_root(), 'playbacks')
 
 
 def get_snap_staging_dir() -> str:

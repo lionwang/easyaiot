@@ -3,6 +3,10 @@ import {
   resolveAlertVideoUrl,
   type AlertRecordLike,
 } from '@/utils/alertRecord';
+import { useMessage } from '@/hooks/web/useMessage';
+
+const { createMessage } = useMessage();
+const PLAYBACK_LOADING_KEY = 'alert-record-playback';
 
 export type AlertRecordModalMethods = {
   openModal: (open?: boolean, data?: any, openOnSet?: boolean) => void;
@@ -34,14 +38,14 @@ function buildModalPayload(
 }
 
 /**
- * 在大屏/告警等场景打开告警录像：先弹出加载态，再解析地址并播放。
+ * 在大屏/告警等场景打开告警录像：先解析地址，确认有录像后再打开播放器。
  * mini / standard / full 共用，兼容 MinIO 直链与按设备+时间查询。
  */
 export async function playAlertRecordInModal(
   modal: AlertRecordModalMethods,
   record: AlertRecordPlayInput,
 ): Promise<boolean> {
-  const { openModal, closeModal } = modal;
+  const { openModal } = modal;
   const seq = ++playbackSeq;
 
   const directRaw = record.video_url || record.url;
@@ -58,20 +62,18 @@ export async function playAlertRecordInModal(
     return false;
   }
 
-  openModal(true, buildModalPayload(deviceId, '', seq, true));
+  createMessage.loading({ content: '正在查询告警录像...', key: PLAYBACK_LOADING_KEY, duration: 0 });
 
   try {
     const videoUrl = await resolveAlertRecordVideoUrl(record);
+    createMessage.destroy(PLAYBACK_LOADING_KEY);
     if (videoUrl) {
       openModal(true, buildModalPayload(deviceId, videoUrl, seq, false));
       return true;
     }
-    closeModal?.();
-    openModal(false);
     return false;
   } catch (error) {
-    closeModal?.();
-    openModal(false);
+    createMessage.destroy(PLAYBACK_LOADING_KEY);
     throw error;
   }
 }

@@ -943,6 +943,13 @@ def create_app(start_background_tasks=None):
         skip = os.getenv('VIDEO_SKIP_BACKGROUND_TASKS', '').strip().lower()
         start_background_tasks = skip not in ('1', 'true', 'yes', 'on')
 
+    if start_background_tasks:
+        try:
+            from app.services.srs_container_guard_service import maybe_fix_srs_on_startup
+            maybe_fix_srs_on_startup()
+        except Exception as e:
+            logger.warning('SRS 启动自检失败（可忽略）: %s', e)
+
     if not start_background_tasks:
         return app
 

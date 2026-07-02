@@ -1838,11 +1838,19 @@ def cleanup_alert_images(alert_image_dir: str, max_images: int = 300, keep_ratio
         logger.error(f"清理告警图片失败: {str(e)}", exc_info=True)
 
 
-def cleanup_srs_recordings(srs_record_dir: str = '/data/playbacks', max_recordings: int = 500, keep_ratio: float = 0.1):
+def cleanup_srs_recordings(srs_record_dir: str | None = None, max_recordings: int = 500, keep_ratio: float = 0.1):
     """清理 SRS 录像目录（委托 VIDEO 回放磁盘守护服务）。"""
     try:
-        if srs_record_dir:
-            os.environ.setdefault('SRS_RECORD_DIR', srs_record_dir)
+        if not srs_record_dir:
+            try:
+                from app.services.playback_disk_guard_service import get_srs_record_dir
+                srs_record_dir = get_srs_record_dir()
+            except Exception:
+                from app.services.media_dvr_utils import DEFAULT_SRS_HOST_DATA_ROOT
+                srs_record_dir = os.path.join(
+                    os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), 'playbacks',
+                )
+        os.environ.setdefault('SRS_RECORD_DIR', srs_record_dir)
         from app.services.playback_disk_guard_service import run_playback_disk_guard
         run_playback_disk_guard()
     except Exception as e:
@@ -2044,8 +2052,12 @@ def heartbeat_worker():
 def srs_recording_cleanup_worker():
     """SRS录像清理工作线程"""
     logger.info("🧹 SRS录像清理线程启动")
-    # 获取SRS录像目录路径（可通过环境变量配置，默认为 /data/playbacks）
-    srs_record_dir = os.getenv('SRS_RECORD_DIR', '/data/playbacks')
+    try:
+        from app.services.playback_disk_guard_service import get_srs_record_dir
+        srs_record_dir = get_srs_record_dir()
+    except Exception:
+        from app.services.media_dvr_utils import DEFAULT_SRS_HOST_DATA_ROOT
+        srs_record_dir = os.path.join(os.path.expanduser(DEFAULT_SRS_HOST_DATA_ROOT), 'playbacks')
 
     while not stop_event.is_set():
         try:
