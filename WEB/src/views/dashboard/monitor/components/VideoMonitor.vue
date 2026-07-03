@@ -78,6 +78,7 @@
             :hasAudio="false"
             :ref="el => setVideoRef(el, index)"
             class="video-player"
+            @stream-error="handleStreamError(index)"
           />
           <div
             class="drag-zone"
@@ -804,6 +805,9 @@ async function startPlayAtScreen(
     videoRefs.value[targetIndex] = null
   }
 
+  const fallbackUrl = payload.fallbackUrl?.trim()
+  const hasFallback = !!(payload.preferAi && fallbackUrl && fallbackUrl !== payload.url)
+
   internalVideoList.value[targetIndex] = {
     id: payload.id,
     url: payload.url,
@@ -811,6 +815,7 @@ async function startPlayAtScreen(
     deviceId: payload.deviceId,
     location: payload.location || '',
     device: payload.device,
+    fallbackUrl: hasFallback ? fallbackUrl : null,
   }
 
   await nextTick()
@@ -834,8 +839,7 @@ async function startPlayAtScreen(
   }
   setTimeout(() => tryPlay(), 200)
 
-  const fallbackUrl = payload.fallbackUrl?.trim()
-  if (!payload.preferAi || !fallbackUrl || fallbackUrl === payload.url) return
+  if (!hasFallback) return
 
   const primaryUrl = payload.url
   const timerId = window.setTimeout(async () => {
@@ -847,11 +851,23 @@ async function startPlayAtScreen(
     createMessage.warning(
       'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
     )
-    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl }
+    internalVideoList.value[targetIndex] = { ...slot, url: fallbackUrl!, fallbackUrl: null }
     await nextTick()
     videoRefs.value[targetIndex]?.play?.()
   }, AI_PLAY_FALLBACK_MS)
   aiFallbackTimers.set(targetIndex, timerId)
+}
+
+/** AI 流播放后中断（timeout/error）：回退到原始流 */
+function handleStreamError(screenIdx: number) {
+  const slot = internalVideoList.value[screenIdx]
+  if (!slot) return
+  const fb = slot.fallbackUrl?.trim()
+  if (!fb || fb === slot.url) return
+  clearAiFallbackTimer(screenIdx)
+  createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）')
+  internalVideoList.value[screenIdx] = { ...slot, url: fb, fallbackUrl: null }
+  nextTick(() => videoRefs.value[screenIdx]?.play?.())
 }
 
 async function resolvePlayUrlsForDevice(dev: MonitorTreeDeviceNode) {

@@ -206,8 +206,10 @@ export default {
             timeout: vod ? 60 : 10,
             loadingTimeout: vod ? 60 : 10,
             heartTimeout: vod ? 120 : 10,
-            loadingTimeoutReplay: !vod,
-            heartTimeoutReplay: !vod,
+            // 实时流(/ai /live /rtp)带 secure_link 票据：禁止 Jessibuca 同地址重放（会复用过期 e/st 导致 403/卡死），
+            // 改由 error/timeout/delayTimeout -> maybeRenewOnError 强制续票后重连。
+            loadingTimeoutReplay: vod,
+            heartTimeoutReplay: vod,
             wasmDecodeErrorReplay: true,
           },
           options
@@ -265,6 +267,16 @@ export default {
         console.log("timeout");
         if (_this.maybeRenewOnError()) return;
         _this.$emit("stream-error", { type: "timeout" });
+      });
+      this.jessibuca.on("loadingTimeout", function () {
+        console.log("loadingTimeout");
+        if (_this.maybeRenewOnError()) return;
+        _this.$emit("stream-error", { type: "loadingTimeout" });
+      });
+      this.jessibuca.on("delayTimeout", function () {
+        console.log("delayTimeout");
+        if (_this.maybeRenewOnError()) return;
+        _this.$emit("stream-error", { type: "delayTimeout" });
       });
       this.jessibuca.on('start', function () {
         console.log('frame start');
