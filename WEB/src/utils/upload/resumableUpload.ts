@@ -15,6 +15,11 @@ export const DATASET_CHUNK_SIZE = 10 * 1024 * 1024;
 /** 数据集单文件最大 200GB */
 export const DATASET_MAX_FILE_SIZE = 200 * 1024 * 1024 * 1024;
 
+export const UPLOAD_CONFIG = {
+  /** 从环境变量读取，未配置时默认为 5 */
+  MAX_CONCURRENCY: Number(import.meta.env.VITE_UPLOAD_MAX_CONCURRENCY) || 5,
+};
+
 /** 小于该阈值走直传（仍兼容旧接口） */
 const DIRECT_UPLOAD_THRESHOLD = 5 * 1024 * 1024;
 
@@ -288,7 +293,7 @@ export async function zipDatasetImageFiles(
   return new File([blob], `dataset-upload-${Date.now()}.zip`, { type: 'application/zip' });
 }
 
-/** 批量上传数据集文件：并发控制（最大并发数 5），支持断点续传 */
+/** 批量上传数据集文件：并发控制（最大并发数见 UPLOAD_CONFIG），支持断点续传 */
 export async function resumableUploadDatasetFiles(
   datasetId: number,
   files: File[],
@@ -302,7 +307,7 @@ export async function resumableUploadDatasetFiles(
     return { successCount: 0, failedCount: 0, failedFiles: [] };
   }
 
-  const MAX_CONCURRENCY = 5;
+  const MAX_CONCURRENCY = UPLOAD_CONFIG.MAX_CONCURRENCY;
   const totalFiles = files.length;
 
   let successCount = 0;
