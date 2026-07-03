@@ -288,7 +288,7 @@ export async function zipDatasetImageFiles(
   return new File([blob], `dataset-upload-${Date.now()}.zip`, { type: 'application/zip' });
 }
 
-/** 批量上传文件夹内图片：先压缩为 ZIP，再整体上传（支持断点续传） */
+/** 批量上传数据集文件：并发控制（最大并发数 5），支持断点续传 */
 export async function resumableUploadDatasetFiles(
   datasetId: number,
   files: File[],
@@ -302,36 +302,85 @@ export async function resumableUploadDatasetFiles(
     return { successCount: 0, failedCount: 0, failedFiles: [] };
   }
 
-  const zipFile = await zipDatasetImageFiles(files, (zipPercent) => {
-    onProgress?.(zipPercent, 0, 1);
-  });
+  const MAX_CONCURRENCY = 5;
+  const totalFiles = files.length;
 
-  if (signal?.aborted) {
-    throw new Error('上传已取消');
+  let successCount = 0;
+  let failedCount = 0;
+  let finishedCount = 0;
+  const failedFiles: string[] = [];
+  let overwrittenCount = 0;
+
+  const fileProgressMap = new Map<number, number>();
+
+  const updateOverallProgress = () => {
+    let currentInternalProgress = 0;
+    for (const p of fileProgressMap.values()) {
+      currentInternalProgress += p;
+    }
+    const overallPercent = Math.round(((finishedCount + currentInternalProgress / 100) / totalFiles) * 100);
+    onProgress?.(Math.min(99, overallPercent), finishedCount, totalFiles);
+  };
+
+  const executeNext = async (index: number): Promise<void> => {
+    if (signal?.aborted) return;
+
+    const file = files[index];
+    try {
+      fileProgressMap.set(index, 0);
+
+      const result = await resumableUploadDatasetFile({
+        datasetId,
+        file,
+        isZip: false,
+        onProgress: (filePercent) => {
+          fileProgressMap.set(index, filePercent);
+          updateOverallProgress();
+        },
+        signal,
+      });
+
+      successCount++;
+      if (result.overwrittenCount) {
+        overwrittenCount += result.overwrittenCount;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === '上传已取消') {
+        throw error;
+      }
+      console.error(`文件 ${file.name} 上传失败:`, error);
+      failedCount++;
+      failedFiles.push(file.name);
+    } finally {
+      fileProgressMap.delete(index);
+      finishedCount++;
+      updateOverallProgress();
+    }
+  };
+
+  const initialTasks: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(MAX_CONCURRENCY, totalFiles); i++) {
+    initialTasks.push(executeNext(i));
   }
 
-  const uploadBase = Math.round(ZIP_PROGRESS_WEIGHT * 100);
-  const uploadSpan = 100 - uploadBase;
+  let nextIndex = MAX_CONCURRENCY;
 
-  const result = await resumableUploadDatasetFile({
-    datasetId,
-    file: zipFile,
-    isZip: true,
-    onProgress: (filePercent) => {
-      const overall = uploadBase + Math.round((filePercent / 100) * uploadSpan);
-      onProgress?.(overall, 1, 1);
-    },
-    signal,
-  });
+  const runWithRefill = async (taskPromise: Promise<void>) => {
+    await taskPromise;
+    if (nextIndex < totalFiles && !signal?.aborted) {
+      const currentIndex = nextIndex++;
+      await runWithRefill(executeNext(currentIndex));
+    }
+  };
 
-  onProgress?.(100, 1, 1);
+  await Promise.all(initialTasks.map((task) => runWithRefill(task)));
 
-  const failedCount = result.failedCount ?? 0;
-  const successCount = result.successCount ?? 0;
+  onProgress?.(100, totalFiles, totalFiles);
+
   return {
     successCount,
     failedCount,
-    failedFiles: result.failedFiles ?? [],
-    overwrittenCount: result.overwrittenCount,
+    failedFiles,
+    overwrittenCount: overwrittenCount || undefined,
   };
 }
