@@ -286,6 +286,13 @@ def _get_alert_filter_query(args: dict) -> Query:
     return query
 
 
+def _should_skip_backfill(args: dict) -> bool:
+    val = args.get('skip_backfill')
+    if val is None:
+        return False
+    return str(val).lower() in ('1', 'true', 'yes')
+
+
 def get_alert_list(args: dict) -> dict:
     """获取报警列表（仅返回 image_url 已写入 MinIO 的记录；record_path 可选）
 
@@ -312,7 +319,8 @@ def get_alert_list(args: dict) -> dict:
             page_no = int(args.get('pageNo') or 1)
             page_size = int(args['pageSize'])
             paginate = query.paginate(page=page_no, per_page=page_size, error_out=False)
-            backfill_alert_records_for_list(paginate.items)
+            if not _should_skip_backfill(args):
+                backfill_alert_records_for_list(paginate.items)
             return {
                 'alert_list': [_alert_to_dict(alert) for alert in paginate.items],
                 'total': paginate.total
@@ -322,7 +330,8 @@ def get_alert_list(args: dict) -> dict:
             return {'alert_list': [], 'total': 0}
     else:
         alerts = query.all()
-        backfill_alert_records_for_list(alerts)
+        if not _should_skip_backfill(args):
+            backfill_alert_records_for_list(alerts)
         return {
             'alert_list': [_alert_to_dict(alert) for alert in alerts],
             'total': len(alerts)

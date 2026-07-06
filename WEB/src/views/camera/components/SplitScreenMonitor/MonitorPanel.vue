@@ -112,6 +112,7 @@
                   :ref="(el) => setPlayerRef(el, i - 1)"
                   :playUrl="state.playCells[i - 1]!.url"
                   :hasAudio="false"
+                  :fill-video="true"
                   @stream-error="handleCellStreamError(i - 1)"
                 />
                 <span class="cell-name" :title="state.playCells[i - 1]!.name">
@@ -236,6 +237,25 @@ const setPlayerRef = (el: any, index: number) => {
   if (el) playerRefs.value[index] = el;
 };
 
+function triggerCellFillResize(cellIdx: number) {
+  const player = playerRefs.value[cellIdx];
+  const inst = player?.jessibuca;
+  if (!inst) return;
+  const run = () => {
+    inst.setScaleMode?.(0);
+    inst.resize?.();
+  };
+  run();
+  window.setTimeout(run, 300);
+  window.setTimeout(run, 800);
+}
+
+function triggerAllCellFillResize() {
+  state.playCells.forEach((cell, idx) => {
+    if (cell) triggerCellFillResize(idx);
+  });
+}
+
 async function resolveDirectPlayUrl(device: MonitorTreeDeviceNode) {
   if (isGb28181Device(device.source, device.device_kind)) {
     return { url: null as string | null, fallbackUrl: null as string | null | undefined };
@@ -294,6 +314,7 @@ async function startPlayAtCell(
   const player = playerRefs.value[cellIdx];
   if (player?.play) {
     player.play();
+    triggerCellFillResize(cellIdx);
   }
 
   if (!hasFallback) return;
@@ -311,6 +332,7 @@ async function startPlayAtCell(
     state.playCells[cellIdx] = { ...cell, url: fallbackUrl, fallbackUrl: null };
     await nextTick();
     playerRefs.value[cellIdx]?.play?.();
+    triggerCellFillResize(cellIdx);
   }, AI_PLAY_FALLBACK_MS);
   aiFallbackTimers.set(cellIdx, timerId);
 }
@@ -324,7 +346,10 @@ function handleCellStreamError(cellIdx: number) {
   clearAiFallbackTimer(cellIdx);
   createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）');
   state.playCells[cellIdx] = { ...cell, url: fb, fallbackUrl: null };
-  nextTick(() => playerRefs.value[cellIdx]?.play?.());
+  nextTick(() => {
+    playerRefs.value[cellIdx]?.play?.();
+    triggerCellFillResize(cellIdx);
+  });
 }
 
 async function reloadPlayCellAtIndex(cellIdx: number) {
@@ -628,6 +653,7 @@ function handleSplitModeChange() {
     while (state.playCells.length < n) state.playCells.push(null);
   }
   if (state.playerIdx >= n) state.playerIdx = 0;
+  nextTick(() => triggerAllCellFillResize());
 }
 
 function handleGridDelete() {
@@ -664,6 +690,7 @@ function handleGridFull() {
 
 const handleFullscreenChange = () => {
   state.isFull = !!document.fullscreenElement;
+  nextTick(() => triggerAllCellFillResize());
 };
 
 onMounted(() => {
@@ -965,6 +992,19 @@ defineExpose({ refresh: () => loadMonitorTree(), forceRefresh: handleRefresh });
   width: 100%;
   height: 100%;
   min-height: 120px;
+  overflow: hidden;
+
+  :deep(.jessibuca-root) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  :deep(.jessibuca-container) {
+    width: 100% !important;
+    height: 100% !important;
+  }
 
   &:hover .cell-close-btn {
     opacity: 0.85;

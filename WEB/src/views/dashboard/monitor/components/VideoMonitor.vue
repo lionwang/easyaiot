@@ -211,7 +211,7 @@ const emit = defineEmits<{
 const { createMessage, createConfirm } = useMessage()
 
 // 播放器弹窗
-const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal }] = useModal()
+const [registerPlayerModal, { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps }] = useModal()
 
 const currentTime = ref('')
 const activeVideoIndex = ref(0)
@@ -1110,7 +1110,7 @@ const loadAlertRecords = async () => {
     const response = await queryAlarmList({
       pageNo: 1,
       pageSize: 20, // 显示最近20条
-    })
+    }, { polling: true })
     if (response && response.alert_list) {
       alertRecordList.value = response.alert_list.map((item: any) => {
         let imageUrl = resolveAlertImageDisplayUrl(item.image_url) || null
@@ -1172,7 +1172,7 @@ const playAlertRecord = async (record: any) => {
 
   try {
     const ok = await playAlertRecordInModal(
-      { openModal: openPlayerModal, closeModal: closePlayerModal },
+      { openModal: openPlayerModal, closeModal: closePlayerModal, setModalProps: setPlayerModalProps },
       record,
     )
     if (ok) {
@@ -1281,8 +1281,12 @@ onUnmounted(() => {
   
   // 清理所有视频播放器实例
   videoRefs.value.forEach((ref) => {
-    if (ref && ref.jessibuca) {
-      ref.destroy()
+    if (ref?.jessibuca) {
+      try {
+        ref.destroy()
+      } catch {
+        /* 切页/卸载时 play 中断属正常，忽略 */
+      }
     }
   })
   videoRefs.value = []

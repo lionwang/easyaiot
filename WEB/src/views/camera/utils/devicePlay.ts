@@ -25,6 +25,12 @@ export function hasDirectPlayStream(record: DeviceInfo, ai = false): boolean {
   return !!(record.http_stream || record.rtmp_stream);
 }
 
+/** 设备是否具备可播放流（原始流、AI 流或国标点播） */
+export function hasPlayableStream(record: DeviceInfo): boolean {
+  if (shouldPlayViaGb28181(record)) return true;
+  return hasDirectPlayStream(record) || hasDirectPlayStream(record, true);
+}
+
 type DirectStreamFields = Pick<
   DeviceInfo,
   'http_stream' | 'rtmp_stream' | 'ai_http_stream' | 'ai_rtmp_stream'
@@ -361,45 +367,60 @@ export async function resolveGbChannelPlayUrls(
   return { url: wvpUrl };
 }
 
-export function buildDialogPlayerPayload(
-  record: DeviceInfo,
-  options?: { ai?: boolean },
-): Record<string, any> {
-  const name = formatCameraDeviceLabel(record);
-
-  if (options?.ai) {
-    const aiUrl = pickAiPlayUrl(record);
-    const videoUrl = pickVideoPlayUrl(record);
-    return {
-      ...record,
-      name,
-      http_stream: aiUrl || videoUrl || undefined,
-    };
-  }
-
-  const gbIds = getGb28181PlayIds(record as Record<string, any>);
-  if (gbIds) {
-    return {
-      ...record,
-      name,
-      deviceIdentification: gbIds.sipDeviceId,
-      channelId: gbIds.channelId,
-      http_stream: undefined,
-    };
-  }
-
-  return { ...record, name };
+export interface DialogPlayerOpenOptions {
+  /** 启用 AI 时优先 AI 流，无则回退原始流；默认 true */
+  enableAi?: boolean;
 }
 
-export function openDeviceInDialogPlayer(
+export async function openDeviceInDialogPlayer(
   openModal: DevicePlayModalOpener,
   record: DeviceInfo,
-  options?: { ai?: boolean },
-) {
-  if (!hasDirectPlayStream(record, options?.ai) && !shouldPlayViaGb28181(record)) {
-    return false;
+  options?: DialogPlayerOpenOptions,
+): Promise<boolean> {
+  const enableAi = options?.enableAi ?? true;
+  const name = formatCameraDeviceLabel(record);
+
+  const gbIds = getGb28181PlayIds(record as Record<string, any>);
+  if (gbIds || shouldPlayViaGb28181(record)) {
+    const sipDeviceId =
+      gbIds?.sipDeviceId ?? String(record.deviceIdentification || record.sip_device_id || '').trim();
+    const channelId =
+      gbIds?.channelId ??
+      String(record.channelId || record.presetPos || record.channel_id || '').trim();
+    if (!sipDeviceId || !channelId) return false;
+
+    const { url, fallbackUrl, preferAi } = await resolveGbChannelPlayUrls(sipDeviceId, channelId, {
+      enableAi,
+      synced: record,
+    });
+    if (!url) return false;
+
+    openModal(true, {
+      ...record,
+      name,
+      deviceIdentification: sipDeviceId,
+      channelId,
+      http_stream: url,
+      _fallbackUrl: fallbackUrl ?? null,
+      _preferAi: preferAi ?? false,
+      _enableAi: enableAi,
+    });
+    return true;
   }
-  openModal(true, buildDialogPlayerPayload(record, options));
+
+  if (!hasPlayableStream(record)) return false;
+
+  const { url, fallbackUrl, preferAi } = await pickDirectPlayUrls(record, enableAi);
+  if (!url) return false;
+
+  openModal(true, {
+    ...record,
+    name,
+    http_stream: url,
+    _fallbackUrl: fallbackUrl ?? null,
+    _preferAi: preferAi ?? false,
+    _enableAi: enableAi,
+  });
   return true;
 }
 

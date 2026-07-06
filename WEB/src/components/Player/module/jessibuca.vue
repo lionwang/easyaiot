@@ -1,5 +1,12 @@
 <template>
-  <div style="width: 100%; height: 100%; background-color: #000c17">
+  <div
+    :class="{
+      'jessibuca-root--vod': vodMode,
+      'jessibuca-root--fill': fillVideo && !vodMode,
+    }"
+    class="jessibuca-root"
+    style="width: 100%; height: 100%; background-color: #000"
+  >
     <div ref="container" class="jessibuca-container" @dblclick="fullscreen" @mousemove="mouseenter">
       <transition name="toolBtn">
         <div
@@ -93,6 +100,20 @@ import {ref} from "vue";
 import {signStreamUrl, isProtectedStreamUrl, clearTicketForUrl} from "@/views/camera/utils/streamTicket";
 import {rewriteStreamHostToPageHost} from "@/views/camera/utils/devicePlay";
 
+/** 切流/卸载/浏览器省电策略导致的播放中断，无需向用户报错 */
+function isBenignPlayerError(e) {
+  if (!e) return true;
+  const name = e?.name || "";
+  const msg = String(e?.message || e || "").toLowerCase();
+  return (
+    name === "AbortError" ||
+    name === "CanceledError" ||
+    msg.includes("postmessage") ||
+    msg.includes("play() request was interrupted") ||
+    msg.includes("background media was paused")
+  );
+}
+
 export default {
   name: "Player",
   components: {Icon},
@@ -108,6 +129,11 @@ export default {
     },
     /** 点播/录像文件（非实时流），需放宽超时并启用 isFlv */
     vodMode: {
+      type: Boolean,
+      default: false,
+    },
+    /** 实时预览铺满容器（与录像回放一致） */
+    fillVideo: {
       type: Boolean,
       default: false,
     },
@@ -142,13 +168,33 @@ export default {
       // 受保护流(secure_link)票据过期/报错时的静默续票重试计数
       protectedRetries: 0,
       maxProtectedRetries: 2,
+      vodResizeObserver: null,
+      _unmounting: false,
+      _onUnhandledRejection: null,
     };
+  },
+  beforeUnmount() {
+    this._unmounting = true;
+    this.unbindVodResizeObserver();
+    if (this._onUnhandledRejection) {
+      window.removeEventListener("unhandledrejection", this._onUnhandledRejection);
+      this._onUnhandledRejection = null;
+    }
   },
   mounted() {
     this.create();
     window.onerror = (msg) => (this.err = msg);
+    this._onUnhandledRejection = (event) => {
+      if (isBenignPlayerError(event?.reason)) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("unhandledrejection", this._onUnhandledRejection);
     if (this.playUrl) {
       this.$nextTick(() => this.play());
+    }
+    if (this.shouldFillContainer()) {
+      this.bindVodResizeObserver();
     }
   },
   watch: {
@@ -159,33 +205,112 @@ export default {
       }
     },
     vodMode() {
+      this.handleDisplayModeChange();
+    },
+    fillVideo() {
+      this.handleDisplayModeChange();
+    },
+  },
+  async unmounted() {
+    if (this.jessibuca) {
+      await this.safeDestroyJessibuca();
+      this.jessibuca = null;
+    }
+  },
+  methods: {
+    async safeDestroyJessibuca() {
+      const inst = this.jessibuca;
+      if (!inst) return;
+      try {
+        if (typeof inst.pause === "function") {
+          try {
+            inst.pause();
+          } catch {
+            /* ignore */
+          }
+        }
+        await inst.destroy();
+      } catch (e) {
+        if (!isBenignPlayerError(e)) {
+          console.warn("jessibuca destroy error", e);
+        }
+      }
+    },
+    shouldFillContainer() {
+      return this.vodMode === true || this.fillVideo === true;
+    },
+    /** 0 拉伸铺满 | 1 等比缩放(留黑边) | 2 等比裁剪铺满 */
+    getScaleMode() {
+      if (this.vodMode || this.fillVideo) return 0;
+      return 1;
+    },
+    handleDisplayModeChange() {
       if (this.jessibuca) {
         this.destroy().then(() => {
           this.create();
           if (this.playUrl) this.$nextTick(() => this.play());
         });
       }
+      if (this.shouldFillContainer()) {
+        this.$nextTick(() => this.bindVodResizeObserver());
+      } else {
+        this.unbindVodResizeObserver();
+      }
     },
-  },
-  async unmounted() {
-    if(this.jessibuca){
-      await this.jessibuca.destroy();
-      this.jessibuca = null;
-    }
-  },
-  methods: {
+    bindVodResizeObserver() {
+      this.unbindVodResizeObserver();
+      const el = this.$refs.container;
+      if (!el || typeof ResizeObserver === 'undefined') return;
+      this.vodResizeObserver = new ResizeObserver(() => {
+        this.scheduleVodResize();
+      });
+      this.vodResizeObserver.observe(el);
+      if (el.parentElement) {
+        this.vodResizeObserver.observe(el.parentElement);
+      }
+    },
+    unbindVodResizeObserver() {
+      if (this.vodResizeObserver) {
+        this.vodResizeObserver.disconnect();
+        this.vodResizeObserver = null;
+      }
+    },
+    scheduleVodResize() {
+      if (!this.shouldFillContainer() || !this.jessibuca) return;
+      const scaleMode = this.getScaleMode();
+      const run = () => {
+        if (!this.jessibuca) return;
+        this.jessibuca.setScaleMode(scaleMode);
+        if (typeof this.jessibuca.resize === 'function') {
+          this.jessibuca.resize();
+        }
+      };
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          run();
+          setTimeout(run, 80);
+          setTimeout(run, 300);
+          setTimeout(run, 600);
+          setTimeout(run, 1200);
+        });
+      });
+    },
     create(options) {
       options = options || {};
       const pageHttps =
         typeof window !== 'undefined' && window.location.protocol === 'https:';
       const vod = this.vodMode === true;
+      const fill = this.shouldFillContainer();
+      const stretchFill = vod || this.fillVideo === true;
+      const scaleMode = this.getScaleMode();
       this.jessibuca = new window.Jessibuca(
         Object.assign(
           {
             container: this.$refs.container,
             decoder: '/static/js/jessibuca/decoder.js',
             videoBuffer: vod ? 0.5 : 0.2,
-            isResize: true,
+            isResize: !stretchFill,
+            isFullResize: false,
             isFlv: vod,
             useWCS: pageHttps && !vod,
             useMSE: vod ? false : this.useMSE,
@@ -233,6 +358,10 @@ export default {
         console.log("on play");
         _this.playing = true;
         _this.protectedRetries = 0; // 成功起播，重置续票重试计数
+        if (fill) {
+          _this.jessibuca.setScaleMode(scaleMode);
+          _this.scheduleVodResize();
+        }
       });
       this.jessibuca.on("fullscreen", function (msg) {
         console.log("on fullscreen", msg);
@@ -257,6 +386,10 @@ export default {
       // });
       this.jessibuca.on("videoInfo", function (info) {
         console.log("videoInfo", info);
+        if (fill) {
+          _this.jessibuca.setScaleMode(scaleMode);
+          _this.scheduleVodResize();
+        }
       });
       this.jessibuca.on("error", function (error) {
         console.log("error", error);
@@ -303,6 +436,10 @@ export default {
         this.playing = true;
         this.loaded = true;
         this.quieting = this.jessibuca.isMute();
+        if (fill) {
+          this.jessibuca.setScaleMode(scaleMode);
+          this.scheduleVodResize();
+        }
       });
       this.jessibuca.on('recordingTimestamp', (ts) => {
         console.log('recordingTimestamp', ts);
@@ -335,6 +472,10 @@ export default {
         if (this.playUrl !== originalPlayUrl || !this.jessibuca) return;
       }
       this.jessibuca.play(target);
+      if ((this.vodMode || this.fillVideo) && this.jessibuca) {
+        this.jessibuca.setScaleMode(0);
+        this.scheduleVodResize();
+      }
     },
     // 受保护流报错(多为票据过期/连接被关)时：强制重新签发并重连，限次防死循环。
     // 返回 true 表示已接管(吞掉本次错误)，false 表示交回上层 emit stream-error。
@@ -366,11 +507,11 @@ export default {
     },
     async destroy() {
       if (this.jessibuca) {
-        await this.jessibuca.destroy();
+        await this.safeDestroyJessibuca();
         this.jessibuca = null;
       }
-      // 仅当容器仍在(切流复用)时才重建；容器已被移除(删格/卸载)时跳过，避免 "Jessibuca need container option" 崩溃
-      if (this.$refs.container) {
+      // 仅当容器仍在且组件未卸载(切流复用)时才重建
+      if (!this._unmounting && this.$refs.container) {
         this.create();
       }
       this.playing = false;
@@ -482,6 +623,28 @@ export default {
 .toolBtn-leave-to {
   height: 0px !important;
   opacity: 0;
+}
+
+.jessibuca-root {
+  display: block;
+}
+
+.jessibuca-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.jessibuca-root--fill .jessibuca-container canvas,
+.jessibuca-root--fill .jessibuca-container video {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: none !important;
 }
 
 .jessibuca-container video {

@@ -268,7 +268,7 @@ class Alert(db.Model):
     event = db.Column(db.String(30), nullable=False)
     region = db.Column(db.String(30), nullable=True)
     information = db.Column(db.Text, nullable=True)
-    time = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.text('NOW()'))
+    time = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.text('NOW()'), index=True)
     # 与 device.id 一致（GB28181 等设备 ID 可达约 50 字符）
     device_id = db.Column(db.String(100), nullable=False)
     device_name = db.Column(db.String(100), nullable=False)

@@ -55,7 +55,12 @@ from app.services.camera_service import resolve_device_ai_rtmp_stream
 from app.utils.alert_images_paths import resolve_alert_images_root
 from app.utils.decode.stream_adapter import is_async_stream, open_device_stream, stream_mode_label
 from app.utils.onnx_inference import ONNXInference
-from app.utils.algo_model_detect import is_end2end_ultralytics_model, is_yolo26_model, run_model_detection
+from app.utils.algo_model_detect import (
+    is_end2end_ultralytics_model,
+    is_yolo26_model,
+    run_model_detection,
+    warmup_model_detection,
+)
 from app.utils.face_capture_queue_service import (
     enqueue_face_capture,
     is_running as face_capture_queue_running,
@@ -762,19 +767,45 @@ def _detections_to_overlay_entries(detections, timestamp):
     return entries
 
 
+def _overlay_stale_frame_lag() -> int:
+    """积压队列中超过此帧差的待检帧视为过期，不应覆盖/清空当前叠框缓存。"""
+    fps = max(1, AI_OUTPUT_FPS)
+    interval = max(1, _runtime_overlay_extract_interval)
+    # 约 1 秒滞后（多路并发 overlay 队列积压时常见）
+    return max(interval * 4, fps)
+
+
+def _is_stale_overlay_detection_frame(device_id: str, frame_number: int) -> bool:
+    current = frame_counts.get(device_id, frame_number)
+    return frame_number < current - _overlay_stale_frame_lag()
+
+
 def _overlay_effective_max_age_sec() -> float:
-    """overlay 框最大存活时间；LATEST_OVERLAY_MAX_AGE_MS=0 时按 overlay 检测周期设极短上限。"""
+    """overlay 框最大存活时间；LATEST_OVERLAY_MAX_AGE_MS=0 时按 overlay 检测周期设上限。"""
     if LATEST_OVERLAY_MAX_AGE_MS > 0:
         return LATEST_OVERLAY_MAX_AGE_SEC
     interval = max(1, _runtime_overlay_extract_interval)
     fps = max(1, AI_OUTPUT_FPS)
     period = interval / fps
-    # 仅保留 1 个 overlay 检测周期 + 50ms 推理缓冲，目标离开后立即消框
-    return max(0.1, period + 0.05)
+    # 2 个 overlay 周期 + 推理/队列缓冲；单周期 TTL 在多路 CPU 推理积压下会立刻过期导致无框
+    return max(0.5, period * 2 + 0.2)
 
 
-def _update_device_latest_overlay(device_id: str, detections: list, timestamp: float, frame_number: int):
+def _update_device_latest_overlay(
+    device_id: str,
+    detections: list,
+    timestamp: float,
+    frame_number: int,
+    *,
+    applied_at: Optional[float] = None,
+):
     """更新设备最新检测 overlay；无目标时清空缓存，避免旧框长期残留。"""
+    if _is_stale_overlay_detection_frame(device_id, frame_number):
+        return
+
+    # 推流侧按「检测完成时刻」计算 TTL，避免队列迟延导致刚写入即过期
+    cache_timestamp = applied_at if applied_at is not None else timestamp
+
     lock = device_latest_overlay_locks.setdefault(device_id, threading.Lock())
     with lock:
         if not detections:
@@ -788,7 +819,7 @@ def _update_device_latest_overlay(device_id: str, detections: list, timestamp: f
     with lock:
         device_latest_overlays[device_id] = {
             'detections': entries,
-            'timestamp': timestamp,
+            'timestamp': cache_timestamp,
             'frame_number': frame_number,
         }
 
@@ -1679,6 +1710,18 @@ def load_yolo_models(model_ids: List[int]) -> Dict[int, Any]:
                         ultra_ver = getattr(_ultra, '__version__', 'unknown')
                     except Exception:
                         ultra_ver = 'unknown'
+                    warmup_imgsz = int(os.getenv('YOLO_IMG_SIZE', '640'))
+                    try:
+                        warmup_model_detection(
+                            yolo_model,
+                            infer_device=infer_device,
+                            imgsz=warmup_imgsz,
+                            conf=_get_detect_conf(end2end=end2end, yolo26=yolo26),
+                            iou=YOLO_DETECT_IOU,
+                        )
+                        logger.info(f"✅ YOLO模型预热完成: model_id={model_id}")
+                    except Exception as warmup_exc:
+                        logger.warning(f"YOLO模型预热失败 model_id={model_id}: {warmup_exc}")
                     logger.info(
                         f"✅ YOLO模型加载成功: model_id={model_id}, infer_device={infer_device}, "
                         f"yolo26={yolo26}, end2end={end2end} (attr={raw_end2end}, yaml={yaml_end2end}), "
@@ -4115,12 +4158,16 @@ def overlay_detection_worker(worker_id: int):
                     detections,
                     timestamp,
                     frame_number,
+                    applied_at=time.time(),
                 )
 
                 if frame_number % 10 == 0:
+                    lag = frame_counts.get(device_id_from_data, frame_number) - frame_number
+                    lag_hint = f", 队列滞后 {lag} 帧" if lag > _overlay_stale_frame_lag() // 2 else ""
                     logger.info(
                         f"✅ [Overlay {worker_id}] 检测完成: {frame_id} (帧号: {frame_number}), "
                         f"更新 overlay 缓存 {len(detections)} 个目标 [{_summarize_detections(detections)}]"
+                        f"{lag_hint}"
                     )
             else:
                 idle_count += 1
@@ -4465,7 +4512,7 @@ def main():
         thread_env='OVERLAY_WORKER_THREADS',
         auto_env='OVERLAY_WORKER_THREADS_AUTO',
         max_env='OVERLAY_WORKER_THREADS_MAX',
-        default_max=8,
+        default_max=12,
         default_fixed=1,
     )
     ALERT_WORKER_THREADS = _resolve_worker_thread_count(

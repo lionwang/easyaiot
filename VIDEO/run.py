@@ -692,6 +692,20 @@ def create_app(start_background_tasks=None):
                     traceback.print_exc()
                     db.session.rollback()
 
+                # alert.time：列表排序、今日统计、时间范围筛选
+                try:
+                    db.session.execute(text("""
+                        CREATE INDEX IF NOT EXISTS idx_alert_time
+                        ON alert (time DESC);
+                    """))
+                    db.session.commit()
+                    print("✅ alert.time 索引检查完成")
+                except Exception as e:
+                    print(f"⚠️  alert.time 索引检查失败: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    db.session.rollback()
+
                 # GB28181 等设备 ID 超过原 VARCHAR(30)，会导致 iot-sink 写入 alert 失败，前端告警列表为空
                 try:
                     widen_specs = [

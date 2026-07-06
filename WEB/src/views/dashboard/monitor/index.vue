@@ -38,7 +38,6 @@ import MonitorHeader from './components/Header.vue'
 import MonitorSidebar from './components/Sidebar.vue'
 import VideoMonitor from './components/VideoMonitor.vue'
 import AlarmPanel from './components/AlarmPanel.vue'
-import { useMessage } from '@/hooks/web/useMessage'
 import { queryAlarmList, getDashboardStatistics } from '@/api/device/calculate'
 import { resolveAlertImageDisplayUrl } from '@/utils/alertMinioImage'
 import { formatAlertListTitle } from '@/views/alert/alertDisplay'
@@ -47,7 +46,6 @@ defineOptions({
   name: 'MonitorDashboard'
 })
 
-const { createMessage } = useMessage()
 const videoMonitorRef = ref<InstanceType<typeof VideoMonitor> | null>(null)
 
 // 选中的设备
@@ -83,7 +81,7 @@ const loadAlarmList = async () => {
     const response = await queryAlarmList({
       pageNo: 1,
       pageSize: 7, // 只加载最近7条
-    })
+    }, { polling: true })
     
     if (response && response.alert_list) {
       // 处理告警数据，确保格式正确
@@ -138,7 +136,6 @@ const loadAlarmList = async () => {
     }
   } catch (error) {
     console.error('加载告警列表失败', error)
-    createMessage.error('加载告警列表失败')
     alarmList.value = []
   }
 }

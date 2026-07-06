@@ -3,14 +3,34 @@
     @register="register"
     :title="modalTitle"
     :footer="null"
-    :width="layoutWidth"
-    :canFullscreen="true"
-    :defaultFullscreen="true"
     :zIndex="10000"
-    wrapClassName="monitor-dialog-wrap"
     @cancel="handleCancel"
   >
     <div class="monitor-dialog" :class="{ 'monitor-dialog--vod': state.vodMode }">
+      <template v-if="state.vodMode">
+        <div class="monitor-dialog__vod-viewer">
+          <div class="monitor-dialog__video-body">
+            <Jessibuca
+              v-if="state.currentUrl"
+              :key="`${playerKey}-${state.currentUrl}`"
+              ref="jessibucaRef"
+              :playUrl="state.currentUrl"
+              :hasAudio="false"
+              :vodMode="true"
+            />
+            <div v-else-if="state.playLoading" class="monitor-dialog__loading">
+              <Spin size="large" />
+              <span>录像加载中...</span>
+            </div>
+            <div v-else class="monitor-dialog__loading">
+              <Icon icon="ant-design:video-camera-outlined" :size="48" />
+              <span>暂无播放地址</span>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
       <MonitorControlPanel
         v-if="showControlPanel"
         :talk-protocol="talkProtocol"
@@ -44,6 +64,10 @@
                 <span class="monitor-dialog__live-dot" />
                 {{ streamLabel }}
               </span>
+              <label v-if="showEnableAiToggle" class="monitor-dialog__ai-toggle">
+                <Checkbox v-model:checked="enableAi" />
+                <span class="monitor-dialog__ai-toggle-text">启用 AI</span>
+              </label>
             </div>
             <div class="monitor-dialog__video-bar-right">
               <span class="monitor-dialog__status-chip" :class="playStatusClass">{{ playStatusText }}</span>
@@ -57,6 +81,8 @@
               :playUrl="state.currentUrl"
               :hasAudio="!!talkProtocol"
               :vodMode="state.vodMode"
+              :fill-video="!state.vodMode"
+              @stream-error="handleStreamError"
             />
             <div v-else-if="state.playLoading" class="monitor-dialog__loading">
               <Spin size="large" />
@@ -73,13 +99,14 @@
           <span v-if="state.currentUrl">码率 {{ bitrateText }}</span>
         </div>
       </div>
+      </template>
     </div>
   </BasicModal>
 </template>
 
 <script lang="ts" setup>
-import { computed, nextTick, reactive, ref } from 'vue';
-import { Spin } from 'ant-design-vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { Spin, Checkbox } from 'ant-design-vue';
 import { useModalInner } from '@/components/Modal';
 import BasicModal from '@/components/Modal/src/BasicModal.vue';
 import Jessibuca from '@/components/Player/module/jessibuca.vue';
@@ -101,7 +128,13 @@ import {
   getGb28181PlayIds,
   shouldPlayViaGb28181,
 } from '@/views/camera/utils/deviceLabel';
-import { pickWvpPlayUrl } from '@/views/camera/utils/devicePlay';
+import {
+  pickWvpPlayUrl,
+  AI_PLAY_FALLBACK_MS,
+  isAiStreamPlayUrl,
+  pickDirectPlayUrls,
+  resolveGbChannelPlayUrls,
+} from '@/views/camera/utils/devicePlay';
 import { isVodPlaybackUrl } from '@/utils/alertRecord';
 import {
   resolveDeviceTalkProtocol,
@@ -116,6 +149,8 @@ import type { PresetItem } from './monitor/MonitorPresetPanel.vue';
 const { createMessage } = useMessage();
 const jessibucaRef = ref();
 const playerKey = ref(0);
+const enableAi = ref(true);
+const enableAiReloading = ref(false);
 
 const state = reactive({
   deviceName: '',
@@ -124,6 +159,8 @@ const state = reactive({
   channelId: '',
   presetPos: '',
   currentUrl: '',
+  fallbackUrl: null as string | null,
+  preferAi: false,
   playLoading: false,
   vodMode: false,
   isGb28181: false,
@@ -132,6 +169,50 @@ const state = reactive({
   presetLoading: false,
   record: null as Record<string, any> | null,
 });
+
+let aiFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearAiFallbackTimer() {
+  if (aiFallbackTimer != null) {
+    window.clearTimeout(aiFallbackTimer);
+    aiFallbackTimer = null;
+  }
+}
+
+function scheduleAiFallback(primaryUrl: string) {
+  clearAiFallbackTimer();
+  const fb = state.fallbackUrl?.trim();
+  if (!state.preferAi || !fb || fb === primaryUrl) return;
+
+  aiFallbackTimer = window.setTimeout(() => {
+    aiFallbackTimer = null;
+    if (state.currentUrl !== primaryUrl) return;
+    if (jessibucaRef.value?.playing) return;
+
+    createMessage.warning(
+      'AI 流暂不可用（请确认算法任务已启动且 ZLM 已收到推流），已切换为原始画面（无检测框）',
+    );
+    switchToFallbackUrl(fb);
+  }, AI_PLAY_FALLBACK_MS);
+}
+
+async function switchToFallbackUrl(url: string) {
+  clearAiFallbackTimer();
+  state.fallbackUrl = null;
+  state.preferAi = false;
+  state.currentUrl = '';
+  await nextTick();
+  state.currentUrl = url;
+  playerKey.value += 1;
+}
+
+function handleStreamError() {
+  const fb = state.fallbackUrl?.trim();
+  if (!fb || fb === state.currentUrl) return;
+  clearAiFallbackTimer();
+  createMessage.warning('AI 流已中断，已切换为原始画面（无检测框）');
+  void switchToFallbackUrl(fb);
+}
 
 const talkProtocol = computed(() => resolveDeviceTalkProtocol(state.record));
 
@@ -145,12 +226,16 @@ const audioTalk = computed(() => (talkProtocol.value === 'gb28181' ? gbTalk : on
 const activeTalk = computed(() => audioTalk.value);
 
 const showControlPanel = computed(() => supportsMonitorControl(state.record, state.vodMode));
-const layoutWidth = computed(() => {
-  if (state.vodMode) return 960;
-  return 'min(1280px, 96vw)';
+const showEnableAiToggle = computed(
+  () => !state.vodMode && !!state.record && !enableAiReloading.value,
+);
+const modalTitle = computed(() => (state.vodMode ? '录像回放' : state.deviceName || '视频监控'));
+const streamLabel = computed(() => {
+  if (state.vodMode) return '录像回放';
+  if (state.isGb28181) return '国标通道';
+  if (isAiStreamPlayUrl(state.currentUrl)) return 'AI 预览';
+  return '实时预览';
 });
-const modalTitle = computed(() => state.deviceName || '视频监控');
-const streamLabel = computed(() => (state.vodMode ? '录像回放' : state.isGb28181 ? '国标通道' : '实时预览'));
 const playStatusText = computed(() => {
   if (state.playLoading) return '连接中';
   if (state.currentUrl) return '已连接';
@@ -163,7 +248,104 @@ const playStatusClass = computed(() => {
 });
 const bitrateText = ref('— kbps');
 
+async function resolveLivePlayUrls(record: Record<string, any>) {
+  const gbIds = getGb28181PlayIds(record);
+  if (gbIds || shouldPlayViaGb28181(record)) {
+    const sipDeviceId =
+      gbIds?.sipDeviceId ?? String(record.deviceIdentification || record.sip_device_id || '').trim();
+    const channelId =
+      gbIds?.channelId ??
+      String(record.channelId || record.presetPos || record.channel_id || '').trim();
+    if (!sipDeviceId || !channelId) {
+      return { url: null as string | null, fallbackUrl: null as string | null, preferAi: false };
+    }
+    return resolveGbChannelPlayUrls(sipDeviceId, channelId, {
+      enableAi: enableAi.value,
+      synced: record,
+    });
+  }
+
+  return pickDirectPlayUrls(record, enableAi.value);
+}
+
+async function applyResolvedStream(
+  record: Record<string, any>,
+  resolved: { url: string | null; fallbackUrl?: string | null; preferAi?: boolean },
+) {
+  if (!resolved.url) {
+    createMessage.warning(
+      enableAi.value ? '该设备暂无 AI 流或原始流播放地址' : '该设备暂无可播放地址',
+    );
+    state.currentUrl = '';
+    state.fallbackUrl = null;
+    state.preferAi = false;
+    return;
+  }
+
+  state.deviceId = String(record.id ?? state.deviceId);
+  state.fallbackUrl = resolved.fallbackUrl?.trim() || null;
+  state.preferAi = !!resolved.preferAi;
+  state.vodMode = false;
+  state.currentUrl = '';
+  await nextTick();
+  state.currentUrl = resolved.url;
+  playerKey.value += 1;
+  scheduleAiFallback(resolved.url);
+  triggerPlayerFillResize();
+}
+
+function triggerPlayerFillResize() {
+  const run = () => {
+    const inst = jessibucaRef.value?.jessibuca;
+    if (!inst) return;
+    inst.setScaleMode?.(0);
+    inst.resize?.();
+  };
+  nextTick(() => {
+    requestAnimationFrame(run);
+    window.setTimeout(run, 300);
+    window.setTimeout(run, 800);
+  });
+}
+
+async function reloadStreamForAiToggle() {
+  const record = state.record;
+  if (!record || state.vodMode) return;
+
+  enableAiReloading.value = true;
+  clearAiFallbackTimer();
+  state.playLoading = true;
+  state.currentUrl = '';
+
+  try {
+    const resolved = await resolveLivePlayUrls(record);
+    await applyResolvedStream(record, resolved);
+  } finally {
+    state.playLoading = false;
+    enableAiReloading.value = false;
+  }
+}
+
+function handleEnableAiChange() {
+  void reloadStreamForAiToggle();
+}
+
+let skipEnableAiWatch = false;
+
+watch(enableAi, () => {
+  if (skipEnableAiWatch || state.vodMode || !state.record) return;
+  handleEnableAiChange();
+});
+
 async function loadStream(record: Record<string, any>) {
+  clearAiFallbackTimer();
+  state.fallbackUrl = null;
+  state.preferAi = false;
+
+  const preResolvedUrl = String(record.http_stream ?? '').trim();
+  const recordFallback = String(record._fallbackUrl ?? '').trim() || null;
+  const recordPreferAi = !!record._preferAi;
+
   const gbIds = getGb28181PlayIds(record);
   const sipDeviceId = gbIds?.sipDeviceId ?? '';
   const channelId = gbIds?.channelId ?? '';
@@ -174,6 +356,22 @@ async function loadStream(record: Record<string, any>) {
   state.presetPos = gbRecord ? channelId : '';
   state.isGb28181 = gbRecord;
   state.isOnvif = gbRecord ? false : isOnvifDevice(record);
+
+  if (preResolvedUrl) {
+    state.deviceId = String(record.id ?? '');
+    state.playLoading = false;
+    state.vodMode = isVodPlaybackUrl(preResolvedUrl);
+    state.fallbackUrl = recordFallback;
+    state.preferAi = recordPreferAi;
+    await nextTick();
+    state.currentUrl = preResolvedUrl;
+    if (preResolvedUrl) {
+      playerKey.value += 1;
+      scheduleAiFallback(preResolvedUrl);
+      triggerPlayerFillResize();
+    }
+    return;
+  }
 
   if (gbRecord) {
     state.currentUrl = '';
@@ -186,6 +384,7 @@ async function loadStream(record: Record<string, any>) {
         state.vodMode = false;
         state.currentUrl = url;
         playerKey.value += 1;
+        triggerPlayerFillResize();
       } else {
         createMessage.error(streamContent?.msg || res?.data?.msg || '未获取到播放地址');
       }
@@ -267,17 +466,54 @@ async function handleStartTalk() {
   await audioTalk.value.start();
 }
 
-const [register, { closeModal }] = useModalInner(async (record) => {
-  await handleStopTalk();
+const [register, { closeModal, setModalProps }] = useModalInner((record) => {
+  void handleModalOpen(record);
+});
+
+async function handleModalOpen(record: Record<string, any>) {
+  const vod = isVodPlaybackUrl(String(record.http_stream ?? ''));
+  skipEnableAiWatch = true;
+  enableAi.value = record._enableAi !== false;
   state.record = record;
   state.deviceName = formatCameraDeviceLabel(record);
+  state.vodMode = vod;
   state.presets = [];
+  applyModalLayout(vod);
+
+  await handleStopTalk();
   await loadStream(record);
+  skipEnableAiWatch = false;
   if (talkProtocol.value === 'onvif') {
     await onvifTalk.checkCapabilities();
   }
   await loadPresets();
-});
+}
+
+function applyModalLayout(vodMode: boolean) {
+  if (vodMode) {
+    setModalProps({
+      defaultFullscreen: false,
+      canFullscreen: false,
+      width: 1000,
+      title: '录像回放',
+      minHeight: 0,
+      bodyStyle: { padding: 0 },
+      wrapClassName: 'monitor-dialog-wrap monitor-dialog-wrap--vod',
+    });
+    return;
+  }
+  setModalProps({
+    defaultFullscreen: true,
+    canFullscreen: true,
+    draggable: false,
+    useWrapper: false,
+    width: 'min(1280px, 96vw)',
+    title: state.deviceName || '视频监控',
+    minHeight: 0,
+    bodyStyle: { padding: 0, height: '100%', overflow: 'hidden' },
+    wrapClassName: 'monitor-dialog-wrap monitor-dialog-wrap--live',
+  });
+}
 
 async function handlePresetAdd() {
   if (state.isOnvif) {
@@ -408,9 +644,13 @@ async function handlePresetDelete(id: string | number) {
 }
 
 function handleCancel() {
+  clearAiFallbackTimer();
   handleStopTalk();
   state.currentUrl = '';
+  state.fallbackUrl = null;
+  state.preferAi = false;
   state.playLoading = false;
+  state.vodMode = false;
   state.record = null;
   closeModal();
 }
@@ -420,6 +660,130 @@ function handleCancel() {
 .monitor-dialog-wrap {
   .ant-modal-body {
     padding: 0 !important;
+  }
+
+  &.fullscreen-modal {
+    padding: 22px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+
+    .ant-modal {
+      position: relative !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      bottom: auto !important;
+      inset: auto !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 100% !important;
+      margin: 0 !important;
+      padding-bottom: 0 !important;
+      transform: none !important;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .ant-modal-content {
+      height: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-modal-header {
+      flex-shrink: 0;
+    }
+
+    .ant-modal-body {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden !important;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ant-modal-body > .scrollbar,
+    .ant-modal-body .scrollbar__wrap,
+    .ant-modal-body .scroll-container,
+    .ant-modal-body .scrollbar__view,
+    .ant-modal-body .ant-spin-nested-loading,
+    .ant-modal-body .ant-spin-container {
+      height: 100% !important;
+      max-height: 100% !important;
+      min-height: 0 !important;
+    }
+
+    .ant-modal-body .scroll-container .scrollbar__wrap {
+      margin-bottom: 0 !important;
+      overflow: hidden !important;
+    }
+
+    .ant-modal-body .ant-spin-container > div {
+      height: 100% !important;
+      max-height: 100% !important;
+      min-height: 0 !important;
+    }
+  }
+
+  &.monitor-dialog-wrap--live.fullscreen-modal {
+    .ant-modal-body {
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+    }
+
+    .ant-modal-body > .ant-spin-nested-loading,
+    .ant-modal-body .ant-spin-container {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-wrapper__body {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .monitor-dialog {
+      flex: 1;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: 100% !important;
+      overflow: hidden;
+    }
+
+    .monitor-control {
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    .monitor-dialog__main {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .monitor-dialog__video {
+      flex: 1;
+      min-height: 0;
+    }
+  }
+
+  &.fullscreen-modal .monitor-dialog {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
   }
 
   .ant-modal-header {
@@ -453,17 +817,79 @@ function handleCancel() {
   }
 }
 
-.monitor-dialog {
-  display: flex;
-  height: min(82vh, 780px);
-  min-height: 520px;
-  background: #f1f5f9;
+.monitor-dialog-wrap--vod {
+  .ant-modal-content {
+    padding: 0 !important;
+    background: #000;
+  }
 
-  &--vod {
-    .monitor-dialog__main {
-      flex: 1;
+  .ant-modal-body {
+    padding: 0 !important;
+    background: #000;
+  }
+
+  .ant-modal-body > .scrollbar {
+    padding: 0 !important;
+  }
+
+  .ant-modal-body .scrollbar__wrap {
+    margin: 0 !important;
+  }
+
+  .ant-modal-body .scroll-container {
+    padding: 0 !important;
+  }
+
+  .monitor-dialog--vod {
+    display: block;
+    height: auto;
+    min-height: 0;
+    background: #000;
+    line-height: 0;
+  }
+
+  .monitor-dialog__vod-viewer {
+    padding: 0;
+    margin: 0;
+    background: #000;
+  }
+
+  .monitor-dialog__vod-viewer .monitor-dialog__video-body {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: 70vh;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: #000;
+    border-radius: 0;
+    overflow: hidden;
+    line-height: 0;
+
+    > .jessibuca-root,
+    > div {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      line-height: normal;
+    }
+
+    .jessibuca-container {
+      width: 100% !important;
+      height: 100% !important;
     }
   }
+}
+
+.monitor-dialog {
+  display: flex;
+  height: min(72vh, 640px);
+  min-height: 420px;
+  max-height: 100%;
+  overflow: hidden;
+  background: #f1f5f9;
 }
 
 .monitor-dialog__main {
@@ -565,6 +991,52 @@ function handleCancel() {
   flex: 1;
   min-height: 0;
   position: relative;
+  overflow: hidden;
+  background: #000;
+
+  > .jessibuca-root,
+  > .monitor-dialog__loading {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  :deep(.jessibuca-container) {
+    width: 100% !important;
+    height: 100% !important;
+  }
+}
+
+.monitor-dialog__ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  cursor: pointer;
+
+  :deep(.ant-checkbox-wrapper) {
+    margin-inline-end: 0;
+    line-height: 1;
+  }
+
+  :deep(.ant-checkbox .ant-checkbox-inner) {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.45);
+  }
+
+  :deep(.ant-checkbox-checked .ant-checkbox-inner) {
+    background-color: #3b6cf5;
+    border-color: #3b6cf5;
+  }
+}
+
+.monitor-dialog__ai-toggle-text {
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
 }
 
 .monitor-dialog__loading {
@@ -579,6 +1051,7 @@ function handleCancel() {
 }
 
 .monitor-dialog__statusbar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
