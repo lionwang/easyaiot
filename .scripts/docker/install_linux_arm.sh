@@ -15,7 +15,7 @@
 #   logs       - 查看服务日志
 #   build      - 重新构建所有镜像
 #   clean      - 清理所有容器和镜像
-#   update     - 更新并重启所有服务
+#   update     - 更新镜像并重启所有服务（交互可选拉取/本地重建）
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
 #   profile    - 显示当前部署形态与服务范围
@@ -1140,8 +1140,16 @@ update_all() {
     check_docker "$@"
     check_docker_compose
     configure_docker_mirror
+    export EASYAIOT_INSTALL_SCRIPT=".scripts/docker/install_linux_arm.sh"
+    runtime_images_acquire_for_update
     prepare_runtime_environment
     create_network
+
+    if runtime_images_should_skip_build; then
+        print_info "镜像已从远程拉取，业务模块将跳过 docker build"
+    else
+        print_info "将进行本地重建更新（各模块 docker build，耗时较长）"
+    fi
     
     # 基础服务先更新并等就绪，业务模块随后
     if execute_module_command ".scripts/docker" "update"; then
@@ -1301,7 +1309,7 @@ show_help() {
     echo "  build-runtime   - 构建/推送运行时镜像到远程仓库"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
-    echo "  update          - 更新并重启所有服务"
+    echo "  update          - 更新镜像并重启所有服务（交互可选拉取/本地重建）"
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
     echo "  profile         - 显示当前部署形态与服务范围"

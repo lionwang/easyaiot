@@ -533,6 +533,9 @@ runtime_images_export_for_invoke() {
         export EASYAIOT_RUNTIME_FORCE_REBUILD=0
         export FORCE_REBUILD=false
     fi
+    if [ "${EASYAIOT_RUNTIME_FORCE_PULL:-0}" = "1" ]; then
+        export EASYAIOT_RUNTIME_FORCE_PULL=1
+    fi
     if [ -n "${EASYAIOT_DEPLOY_PROFILE:-}" ] && [ "${EASYAIOT_RUNTIME_BUILD_ALL_PROFILES:-0}" != "1" ]; then
         export EASYAIOT_RUNTIME_EXPLICIT_PROFILE="$EASYAIOT_DEPLOY_PROFILE"
     fi
@@ -732,8 +735,12 @@ runtime_images_ensure_arch_consistency() {
 }
 
 # pull 时：镜像已存在且架构正确则跳过；否则删除错误架构后返回需拉取
+# update 流程设置 EASYAIOT_RUNTIME_FORCE_PULL=1 时强制拉取最新镜像（不跳过已有）
 runtime_pull_should_skip_image() {
     local ref="$1" expected="${2:-$(runtime_detect_arch)}"
+    if [ "${EASYAIOT_RUNTIME_FORCE_PULL:-0}" = "1" ]; then
+        return 1
+    fi
     if runtime_local_image_arch_ready "$ref" "$expected"; then
         return 0
     fi
@@ -916,9 +923,9 @@ runtime_print_install_local_build_help() {
     runtime_img_msg warn "========================================"
     runtime_img_msg warn "  预构建镜像不可用 — 本地构建指引"
     runtime_img_msg warn "========================================"
-    if [ "$context" = "install" ]; then
-        runtime_img_msg info "install 将自动在各模块执行 docker build，一般无需额外操作。"
-        runtime_img_msg info "若 install 已中断或需分步执行，可参考以下命令："
+    if [ "$context" = "install" ] || [ "$context" = "update" ]; then
+        runtime_img_msg info "${context} 将自动在各模块执行 docker build，一般无需额外操作。"
+        runtime_img_msg info "若 ${context} 已中断或需分步执行，可参考以下命令："
     else
         runtime_img_msg info "请在本机编译并制作 Docker 镜像，可使用以下命令："
     fi
@@ -1001,6 +1008,58 @@ runtime_images_acquire() {
 
     export EASYAIOT_SKIP_IMAGE_PROMPT=1
     # 本地构建是正常路径，始终 return 0（避免 install 脚本 set -e 误退出）
+    return 0
+}
+
+# 统一镜像更新（update 流程共用）
+# 交互询问拉取最新预构建镜像或本地重建；成功拉取后设置 EASYAIOT_SKIP_BUILD
+runtime_images_acquire_for_update() {
+    local do_local_build=0
+
+    if [ "${EASYAIOT_RUNTIME_FORCE_PULL:-0}" = "1" ]; then
+        do_local_build=0
+    elif [ "${EASYAIOT_SKIP_IMAGE_PROMPT:-0}" = "1" ]; then
+        if [ "${EASYAIOT_SKIP_BUILD:-0}" = "1" ]; then
+            return 0
+        fi
+        do_local_build=1
+    elif [ -t 0 ]; then
+        runtime_img_msg info "========================================"
+        runtime_img_msg info "  镜像更新方式"
+        runtime_img_msg info "========================================"
+        runtime_img_msg info "  1) 拉取最新预构建镜像：从远程仓库下载（快速，默认）"
+        runtime_img_msg info "  2) 本地重建：编译并制作 Docker 镜像（耗时较长）"
+        echo ""
+        read -r -p "是否从远程仓库拉取最新预构建镜像？(Y/n) " _pull_response
+        case "${_pull_response:-Y}" in
+            n|N|no|NO)
+                do_local_build=1
+                runtime_img_msg info "已选择本地重建，update 将在各模块执行 docker build（耗时较长）"
+                ;;
+            *) do_local_build=0 ;;
+        esac
+    else
+        runtime_img_msg info "非交互模式，默认拉取最新预构建镜像"
+    fi
+
+    if [ "$do_local_build" -eq 0 ]; then
+        runtime_img_msg info "正在拉取最新预构建镜像..."
+        export EASYAIOT_RUNTIME_FORCE_PULL=1
+        runtime_images_prepare_pull_interactive
+        runtime_images_export_for_invoke
+        if runtime_images_invoke pull; then
+            runtime_img_msg ok "预构建镜像更新成功"
+            export EASYAIOT_SKIP_BUILD=1
+        else
+            runtime_img_msg warn "预构建镜像拉取失败，update 将自动在各模块执行本地重建"
+            runtime_print_install_local_build_help update
+            do_local_build=1
+            unset EASYAIOT_RUNTIME_FORCE_PULL
+        fi
+    fi
+
+    export EASYAIOT_SKIP_IMAGE_PROMPT=1
+    unset EASYAIOT_RUNTIME_FORCE_PULL
     return 0
 }
 
