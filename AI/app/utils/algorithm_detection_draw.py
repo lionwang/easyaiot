@@ -1,19 +1,80 @@
 """
-与 VIDEO 实时算法任务一致的检测框绘制样式（run_deploy.draw_detections）。
+推理结果检测框绘制（绿框 + 类别置信度标签）。
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
-# 与 VIDEO/services/realtime_algorithm_service/run_deploy.py 保持一致
-ALGORITHM_BOX_COLOR = (0, 255, 0)  # BGR 亮绿色
-ALGORITHM_BOX_THICKNESS = 2
-ALGORITHM_FONT_SCALE = 0.8
-ALGORITHM_FONT_THICKNESS = 2
+# 检测框颜色（统一绿色）
+INFERENCE_BOX_COLOR = (0, 255, 0)  # BGR 亮绿色
+INFERENCE_BOX_COLOR_CACHED = (0, 200, 0)
+INFERENCE_BOX_THICKNESS = 3
+INFERENCE_FONT_SCALE = 0.90
+INFERENCE_FONT_THICKNESS = 2
 ALGORITHM_DEFAULT_CONF = 0.25
+
+# 兼容旧引用
+ALGORITHM_BOX_COLOR = INFERENCE_BOX_COLOR
+ALGORITHM_BOX_THICKNESS = INFERENCE_BOX_THICKNESS
+ALGORITHM_FONT_SCALE = INFERENCE_FONT_SCALE
+ALGORITHM_FONT_THICKNESS = INFERENCE_FONT_THICKNESS
+
+
+def _scaled_draw_params(frame_h: int, frame_w: int) -> tuple[int, float, int, int, int]:
+    """按分辨率微调线宽与字号。"""
+    scale = max(frame_h, frame_w) / 1080.0
+    thickness = max(2, int(round(INFERENCE_BOX_THICKNESS * min(scale, 1.15))))
+    font_scale = INFERENCE_FONT_SCALE * min(scale, 1.3)
+    font_thickness = INFERENCE_FONT_THICKNESS
+    cn_font_size = max(24, int(round(28 * min(scale, 1.3))))
+    label_gap = max(10, int(round(12 * min(scale, 1.2))))
+    return thickness, font_scale, font_thickness, cn_font_size, label_gap
+
+
+def _measure_label_size(
+    text: str,
+    font_scale: float,
+    font_thickness: int,
+    cn_font_size: int,
+) -> Tuple[int, int, bool]:
+    """返回 (宽, 高, 是否用 PIL 绘制中文)。"""
+    use_pil = not text.isascii()
+    if use_pil:
+        from app.utils.yolo_chinese_font import get_pil_annotation_font
+
+        font = get_pil_annotation_font(cn_font_size)
+        if font is not None:
+            bbox = font.getbbox(text)
+            return bbox[2] - bbox[0], bbox[3] - bbox[1], True
+    (text_w, text_h), baseline = cv2.getTextSize(
+        text,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        font_thickness,
+    )
+    # 预留边距，避免粗体/抗锯齿导致右侧或底部被裁切
+    return text_w + 8, text_h + baseline + 6, False
+
+
+def _label_position_above_box(
+    x1: int,
+    y1: int,
+    text_w: int,
+    text_h: int,
+    frame_w: int,
+    frame_h: int,
+    label_gap: int,
+) -> Tuple[int, int, int]:
+    """标签始终贴在框上方，与框顶保持 label_gap 间距。"""
+    margin = 2
+    text_x = max(margin, min(x1, frame_w - text_w - margin))
+    # 文字底边距框顶 label_gap 像素
+    pil_top = max(margin, y1 - label_gap - text_h)
+    text_y = max(text_h + margin, pil_top + text_h)
+    return text_x, text_y, pil_top
 
 
 def yolo_results_to_detections(result) -> List[Dict[str, Any]]:
@@ -39,7 +100,7 @@ def draw_algorithm_detections(
     *,
     tracking_enabled: bool = False,
 ) -> np.ndarray:
-    """在帧上绘制检测结果（样式对齐 VIDEO 算法任务）。"""
+    """在帧上绘制检测结果（绿框 + 类别置信度）。"""
     if frame is None:
         return frame
     if not detections:
@@ -47,6 +108,7 @@ def draw_algorithm_detections(
 
     annotated_frame = frame.copy()
     h, w = annotated_frame.shape[:2]
+    box_thickness, font_scale, font_thickness, cn_font_size, label_gap = _scaled_draw_params(h, w)
 
     for det in detections:
         bbox = det.get('bbox') or []
@@ -64,12 +126,12 @@ def draw_algorithm_detections(
         is_cached = bool(det.get('is_cached', False))
 
         if is_cached:
-            color = (0, 200, 0)
-            thickness = ALGORITHM_BOX_THICKNESS
+            color = INFERENCE_BOX_COLOR_CACHED
+            thickness = box_thickness
             alpha = 0.7
         else:
-            color = ALGORITHM_BOX_COLOR
-            thickness = ALGORITHM_BOX_THICKNESS
+            color = INFERENCE_BOX_COLOR
+            thickness = box_thickness
             alpha = 1.0
 
         if is_cached:
@@ -82,45 +144,45 @@ def draw_algorithm_detections(
         if tracking_enabled:
             text = f'ID:{track_id} {class_name}'
         else:
-            text = class_name
+            conf = det.get('confidence')
+            if conf is not None:
+                text = f'{class_name} {float(conf):.2f}'
+            else:
+                text = class_name
 
-        (text_width, text_height), _baseline = cv2.getTextSize(
-            text,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            ALGORITHM_FONT_SCALE,
-            ALGORITHM_FONT_THICKNESS,
+        text_w, text_h, use_pil = _measure_label_size(
+            text, font_scale, font_thickness, cn_font_size,
         )
-        text_x = x1
-        text_y = max(text_height + 5, y1 - 5)
+        text_x, text_y, pil_y = _label_position_above_box(
+            x1, y1, text_w, text_h, w, h, label_gap,
+        )
 
-        if not text.isascii():
-            from app.utils.yolo_chinese_font import draw_utf8_label_on_bgr
-            pil_y = max(0, text_y - text_height)
-            if not draw_utf8_label_on_bgr(
+        from app.utils.yolo_chinese_font import draw_utf8_label_on_bgr, get_pil_annotation_font
+
+        font = get_pil_annotation_font(cn_font_size)
+        if font is not None:
+            bbox = font.getbbox(text)
+            pil_text_h = max(1, bbox[3] - bbox[1])
+            pil_text_w = max(1, bbox[2] - bbox[0])
+            pil_x = max(2, min(text_x, w - pil_text_w - 2))
+            pil_y = max(2, y1 - label_gap - pil_text_h)
+            draw_utf8_label_on_bgr(
                 annotated_frame,
                 text,
-                (text_x, pil_y),
-                font_size=22,
+                (pil_x, pil_y),
+                font_size=cn_font_size,
                 text_color_rgb=(color[2], color[1], color[0]),
-            ):
-                cv2.putText(
-                    annotated_frame,
-                    text,
-                    (text_x, text_y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    ALGORITHM_FONT_SCALE,
-                    color,
-                    ALGORITHM_FONT_THICKNESS,
-                )
+            )
         else:
             cv2.putText(
                 annotated_frame,
                 text,
                 (text_x, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                ALGORITHM_FONT_SCALE,
+                font_scale,
                 color,
-                ALGORITHM_FONT_THICKNESS,
+                font_thickness,
+                lineType=cv2.LINE_AA,
             )
 
     return annotated_frame

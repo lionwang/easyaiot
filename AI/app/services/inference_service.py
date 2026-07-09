@@ -679,7 +679,7 @@ class InferenceService:
         yolo_result=None,
         detections: Optional[list] = None,
     ) -> np.ndarray:
-        """使用与 VIDEO 算法任务一致的绿框样式绘制检测结果。"""
+        """绘制检测结果（绿框 + 类别置信度）。"""
         dets = detections if detections is not None else yolo_results_to_detections(yolo_result)
         return draw_algorithm_detections(frame, dets)
 
