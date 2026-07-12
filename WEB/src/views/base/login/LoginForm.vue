@@ -19,6 +19,7 @@ import * as authUtil from '@/utils/auth'
 import { Verify } from '@/components/Verifition'
 import { getTenantByWebsite, getTenantIdByName } from '@/api/base/login'
 import { Button } from '@/components/Button'
+import { onMounted } from 'vue'
 const FormItem = Form.Item
 const InputPassword = Input.Password
 
@@ -35,7 +36,11 @@ const { getFormRules } = useFormRules()
 
 const formRef = ref()
 const loading = ref(false)
-const rememberMe = ref(false)
+const rememberMe = ref(authUtil.getRememberMe())
+
+onMounted(() => {
+  rememberMe.value = authUtil.getRememberMe()
+})
 
 const verify = ref()
 const captchaType = ref('blockPuzzle') // blockPuzzle 滑块 clickWord 点击文字
@@ -93,6 +98,7 @@ async function handleLogin(params) {
       password: data.password,
       username: data.username,
       captchaVerification: params.captchaVerification,
+      rememberMe: rememberMe.value,
       mode: 'none', // 不要默认的错误提示
     })
     if (userInfo) {
@@ -155,7 +161,7 @@ async function handleLogin(params) {
         <FormItem>
           <!-- No logic, you need to deal with it yourself -->
           <Checkbox v-model:checked="rememberMe" size="small">
-            {{ t('sys.login.rememberMe') }}
+            {{ t('sys.login.rememberMe30Days') }}
           </Checkbox>
         </FormItem>
       </Col>

@@ -13,11 +13,10 @@ import { useGlobSetting } from '@/hooks/setting'
 import { useMessage } from '@/hooks/web/useMessage'
 import { ContentTypeEnum, RequestEnum, ResultEnum } from '@/enums/httpEnum'
 import {isEmpty, isNull, isString, isUnDef, isUndefined} from '@/utils/is'
-import { getAccessToken, getTenantId } from '@/utils/auth'
+import { getAccessToken, getTenantId, handleSessionTimeout } from '@/utils/auth'
 import { deepMerge, setObjToUrlParams } from '@/utils'
 import { useErrorLogStoreWithOut } from '@/store/modules/errorLog'
 import { useI18n } from '@/hooks/web/useI18n'
-import { useUserStoreWithOut } from '@/store/modules/user'
 import { AxiosRetry } from '@/utils/http/axios/axiosRetry'
 
 const globSetting = useGlobSetting()
@@ -98,10 +97,7 @@ const transform: AxiosTransform = {
     switch (code) {
       case ResultEnum.UNAUTHORIZED:
         timeoutMsg = t('sys.api.timeoutMessage')
-        // eslint-disable-next-line no-case-declarations
-        const userStore = useUserStoreWithOut()
-        userStore.setAccessToken(undefined)
-        userStore.logout(true)
+        handleSessionTimeout()
         break
       default:
         if (msg)
