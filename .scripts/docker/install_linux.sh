@@ -18,6 +18,7 @@
 #   build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）
 #   pull            - 从远程仓库拉取预构建运行时镜像（等同 runtime_image.sh pull）
 #   clean      - 清理所有容器和镜像
+#   clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，再删镜像/构建缓存；不停中间件）
 #   update     - 更新镜像并重启所有服务（交互可选拉取/本地重建）
 #   verify     - 验证所有服务是否启动成功
 #   check      - 检查 Docker 和 Docker Compose 安装状态
@@ -1206,6 +1207,25 @@ stop_all() {
     print_success "所有服务已停止"
 }
 
+# 仅停止业务运行时模块（不含 Nacos/PostgreSQL 等中间件），便于释放 build-runtime 镜像占用
+stop_runtime_modules() {
+    print_section "停止业务运行时服务（保留中间件）"
+
+    check_docker
+    check_docker_compose
+
+    collect_biz_modules
+    local -a stop_modules=("${BIZ_MODULES[@]}")
+    local idx module
+    for ((idx=${#stop_modules[@]}-1 ; idx>=0 ; idx--)); do
+        module="${stop_modules[$idx]}"
+        execute_module_command "$module" "stop" || print_warning "${MODULE_NAMES[$module]} 停止失败，继续其余模块"
+        echo ""
+    done
+
+    print_success "业务运行时服务已停止（中间件未停止）"
+}
+
 # 重启所有服务
 restart_all() {
     print_section "重启所有服务"
@@ -1357,6 +1377,27 @@ clean_all() {
         print_success "清理完成"
     else
         print_info "已取消清理操作"
+    fi
+}
+
+# 清理 build-runtime 构建产物：先停止服务，再调用 cleanup_build_runtime.sh
+clean_build_runtime() {
+    shift
+    local -a cleanup_args=("$@")
+
+    print_section "清理 build-runtime 构建产物"
+    check_docker
+
+    print_info "步骤 1/2: 停止业务运行时服务（保留中间件）..."
+    stop_runtime_modules
+
+    print_info "步骤 2/2: 清理 build-runtime 镜像与构建缓存..."
+    if [ "${EASYAIOT_FROM_MENU:-0}" = "1" ] && [ ${#cleanup_args[@]} -eq 0 ]; then
+        bash "${SCRIPT_DIR}/cleanup_build_runtime.sh"
+    elif [ ${#cleanup_args[@]} -eq 0 ]; then
+        bash "${SCRIPT_DIR}/cleanup_build_runtime.sh" -y
+    else
+        bash "${SCRIPT_DIR}/cleanup_build_runtime.sh" "${cleanup_args[@]}"
     fi
 }
 
@@ -1553,6 +1594,7 @@ show_help() {
     echo "  build-runtime [模块] - 构建/推送运行时镜像到远程仓库（可选 DEVICE|AI|VIDEO|WEB|APP）"
     echo "  pull            - 从远程仓库拉取预构建运行时镜像（交互式，默认 full）"
     echo "  clean           - 清理所有容器和镜像"
+    echo "  clean-build-runtime - 清理 build-runtime 构建产物（先停业务服务，默认删镜像+构建缓存）"
     echo "  update          - 更新镜像并重启所有服务（交互可选拉取/本地重建）"
     echo "  verify          - 验证所有服务是否启动成功"
     echo "  check           - 检查 Docker 和 Docker Compose 安装状态"
@@ -1622,6 +1664,9 @@ main() {
             ;;
         clean)
             clean_all
+            ;;
+        clean-build-runtime|clean-runtime)
+            clean_build_runtime "$@"
             ;;
         update)
             update_all
