@@ -42,6 +42,7 @@ services:
       - ./yolo11n.pt:/app/yolo11n.pt
       - ./yolov8n.pt:/app/yolov8n.pt
       - ./yolo26n.pt:/app/yolo26n.pt
+      - ./yolo26n-pose.pt:/app/yolo26n-pose.pt
       # 环境变量配置文件（用于Docker部署，使用.env.docker）
       - ./.env.docker:/app/.env:ro
       # mini 形态不启 MinIO 服务时，只读挂载 flat 种子数据供懒加载/启动同步

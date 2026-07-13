@@ -19,7 +19,11 @@ from sqlalchemy import desc, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.services.minio_service import ModelService
-from app.utils.train_dataset_name import is_upload_storage_stem, resolve_dataset_display_name
+from app.utils.node_client import resolve_java_backend_url
+from app.utils.train_dataset_name import (
+    is_legacy_bad_dataset_name,
+    resolve_dataset_display_name,
+)
 from app.utils.image_utils import download_default_model_image
 from app.utils.model_class_utils import (
     dump_class_names_json,
@@ -33,6 +37,21 @@ logger = logging.getLogger(__name__)
 TASK_NAME_MAX_LEN = 200
 DEFAULT_TASK_BASE_NAME = 'train'
 LEGACY_TIMESTAMP_BASE = re.compile(r'^train_task_\d{8}_\d{6}$')
+LEGACY_BAD_TASK_BASE_RE = re.compile(r'^(train_)?download\?prefix=', re.IGNORECASE)
+
+
+def is_legacy_bad_task_base_name(name: str) -> bool:
+    """判断是否为历史拼接产生的无意义任务名前缀。"""
+    text = (name or '').strip()
+    if not text:
+        return True
+    if LEGACY_BAD_TASK_BASE_RE.match(text):
+        return True
+    if is_legacy_bad_dataset_name(text):
+        return True
+    if LEGACY_TIMESTAMP_BASE.match(text):
+        return True
+    return text.startswith('train_task_')
 
 
 def _strip_task_id_suffix(name: str, task_id: int | None) -> str:
@@ -66,6 +85,9 @@ def resolve_task_base_name(task: TrainTask) -> str:
     if LEGACY_TIMESTAMP_BASE.match(stored) or stored.startswith('train_task_'):
         return DEFAULT_TASK_BASE_NAME
 
+    if is_legacy_bad_task_base_name(stored):
+        return DEFAULT_TASK_BASE_NAME
+
     return stored or DEFAULT_TASK_BASE_NAME
 
 
@@ -75,9 +97,11 @@ def build_train_task_name(
     dataset_version=None,
     task_id=None,
 ) -> str:
-    """格式: {用户任务名}_{数据集名}_{版本}_{任务ID}，例如 train_人_v1.0.0_19"""
+    """格式: {用户任务名}_{任务ID}，例如 xxx_21。数据集信息单独字段展示。"""
     base = _strip_task_id_suffix((base_name or '').strip(), task_id)
     if LEGACY_TIMESTAMP_BASE.match(base) or base.startswith('train_task_'):
+        base = DEFAULT_TASK_BASE_NAME
+    if is_legacy_bad_task_base_name(base):
         base = DEFAULT_TASK_BASE_NAME
     if not base:
         base = DEFAULT_TASK_BASE_NAME
@@ -87,12 +111,10 @@ def build_train_task_name(
     for extra in (dv, ds):
         if extra and base.endswith(f'_{extra}'):
             base = base[: -(len(extra) + 1)]
+    if is_legacy_bad_task_base_name(base):
+        base = DEFAULT_TASK_BASE_NAME
 
     parts = [base]
-    if ds:
-        parts.append(ds)
-    if dv:
-        parts.append(dv)
     if task_id is not None:
         parts.append(str(task_id))
 
@@ -106,7 +128,19 @@ def _dataset_path_key(dataset_path: str) -> str:
     prefix_list = parse_qs(parsed.query).get('prefix')
     if prefix_list and prefix_list[0]:
         return prefix_list[0]
-    return dataset_path.rstrip('/').split('/')[-1]
+    basename = dataset_path.rstrip('/').split('/')[-1]
+    if '?' in basename:
+        return ''
+    return basename
+
+
+def _register_dataset_map_keys(dataset_map: dict, key: str, info: dict) -> None:
+    if not key:
+        return
+    dataset_map[key] = info
+    stripped = key[:-4] if key.lower().endswith('.zip') else key
+    if stripped and stripped != key:
+        dataset_map[stripped] = info
 
 
 def _build_dataset_zip_map(items) -> dict:
@@ -119,15 +153,13 @@ def _build_dataset_zip_map(items) -> dict:
         if not zip_url:
             continue
         info = {'name': name, 'version': version}
-        dataset_map[zip_url] = info
-        path_key = _dataset_path_key(zip_url)
-        if path_key:
-            dataset_map[path_key] = info
+        _register_dataset_map_keys(dataset_map, zip_url, info)
+        _register_dataset_map_keys(dataset_map, _dataset_path_key(zip_url), info)
     return dataset_map
 
 
 def _load_dataset_zip_map() -> dict:
-    java_url = os.getenv('JAVA_BACKEND_URL', 'http://localhost:8080').rstrip('/')
+    java_url = resolve_java_backend_url()
     headers = {}
     auth = request.headers.get('Authorization') or request.headers.get('X-Authorization')
     if auth:
@@ -180,12 +212,18 @@ def _is_local_filesystem_dataset_path(dataset_path: str) -> bool:
 def _enrich_task_metadata(task: TrainTask, dataset_map: dict) -> bool:
     """补全缺失的数据集字段与任务名，返回是否有字段变更。"""
     changed = False
-    info = None
-    if not _is_local_filesystem_dataset_path(task.dataset_path):
-        info = _lookup_dataset_info(dataset_map, task.dataset_path)
+    should_lookup_map = (
+        not _is_local_filesystem_dataset_path(task.dataset_path)
+        or is_legacy_bad_dataset_name(task.dataset_name)
+    )
+    info = _lookup_dataset_info(dataset_map, task.dataset_path) if should_lookup_map else None
     if info:
-        if not task.dataset_name and info.get('name'):
-            task.dataset_name = info['name']
+        map_name = (info.get('name') or '').strip()
+        if map_name and (
+            not task.dataset_name
+            or is_legacy_bad_dataset_name(task.dataset_name)
+        ):
+            task.dataset_name = map_name
             changed = True
         if task.dataset_version in (None, '') and info.get('version'):
             task.dataset_version = info['version']
@@ -193,7 +231,7 @@ def _enrich_task_metadata(task: TrainTask, dataset_map: dict) -> bool:
 
     resolved_name = resolve_dataset_display_name(task.dataset_path, task.dataset_name)
     if resolved_name and resolved_name != (task.dataset_name or '').strip():
-        if not task.dataset_name or is_upload_storage_stem(task.dataset_name):
+        if not task.dataset_name or is_legacy_bad_dataset_name(task.dataset_name):
             task.dataset_name = resolved_name
             changed = True
 
