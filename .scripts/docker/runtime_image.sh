@@ -251,7 +251,8 @@ APT_MIRROR_URL="${APT_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com/}"
 APK_MIRROR="${APK_MIRROR:-mirrors.tuna.tsinghua.edu.cn}"
-YUM_MIRROR_URL="${YUM_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
+# AlmaLinux 8 aarch64 在清华源已缺失，YUM 默认走华为云（Dockerfile.arm 还会探测回退）
+YUM_MIRROR_URL="${YUM_MIRROR_URL:-https://mirrors.huaweicloud.com}"
 MAVEN_MIRROR_URL="${MAVEN_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn/repository/maven-public/}"
 
 if $NATIVE_SOURCE; then
