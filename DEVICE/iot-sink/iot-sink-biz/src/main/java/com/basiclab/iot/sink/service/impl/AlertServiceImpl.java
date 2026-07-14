@@ -1034,6 +1034,12 @@ public class AlertServiceImpl implements AlertService {
             alertDO.setNotificationSent(false);
             alertDO.setNotificationSentTime(null);
             alertDO.setCorrelationId(notificationMessage.getCorrelationId());
+            alertDO.setTaskId(notificationMessage.getTaskId());
+            alertDO.setTaskName(notificationMessage.getTaskName());
+            alertDO.setEdgeNodeId(notificationMessage.getEdgeNodeId());
+            alertDO.setEdgeNodeName(notificationMessage.getEdgeNodeName());
+            alertDO.setEdgeNodeHost(notificationMessage.getEdgeNodeHost());
+            alertDO.setNodeId(notificationMessage.getNodeId());
             
             // 插入数据库（使用@DS("video")注解的Mapper会自动切换到VIDEO数据库）
             int result = alertMapper.insert(alertDO);

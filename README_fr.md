@@ -36,7 +36,7 @@ De nombreux projets IoT intelligents se heurtent au même obstacle lors du dépl
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-La plateforme comprend sept modules principaux — <strong>WEB, APP, DEVICE, NODE, VIDEO, AI et TASK</strong> — avec Java comme socle de contrôle stable, Python pour l'IA et le réseau, et C++ pour les tâches de calcul haute performance, chaque langage exploitant ses forces. Côté capacités : accès caméra multi-protocoles GB28181 / ONVIF, tâches algorithmiques temps réel et par capture, détection d'objets YOLO et annotation automatique SAM zero-shot, reconnaissance faciale/plaques, post-traitement métier orchestrable, planification de clusters de calcul fédérés, et gestion du cycle de vie des appareils IoT MQTT / TCP / HTTP. Côté expérience : la console Web et l'App mobile / mini-programme sont alignées en capacités — centres de commande et inspections terrain partagent la même logique métier, partout et à tout moment.
+La plateforme comprend huit modules principaux — <strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK et EDGE</strong> — avec Java comme socle de contrôle stable, Python pour l'IA et le réseau, et C++ pour les tâches de calcul haute performance, chaque langage exploitant ses forces. Côté capacités : accès caméra multi-protocoles GB28181 / ONVIF, tâches algorithmiques temps réel et par capture, détection d'objets YOLO et annotation automatique SAM zero-shot, reconnaissance faciale/plaques, post-traitement métier orchestrable, planification de clusters de calcul fédérés, et <strong>mode cluster edge fédéré illimité</strong> (environ <strong>512 Mo</strong> de mémoire, occupation disque locale nulle côté edge sur Ceph — alertes et objets métier sur Ceph partagé, pas de disque métier local ; une seule commande rend une carte de développement ordinaire intelligente, compute déployable en extension sur site avec agrégation vers le cloud), ainsi que la gestion du cycle de vie des appareils IoT MQTT / TCP / HTTP. Côté expérience : la console Web et l'App mobile / mini-programme sont alignées en capacités — centres de commande et inspections terrain partagent la même logique métier, partout et à tout moment.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
@@ -90,6 +90,14 @@ Beaucoup de projets IoT intelligents butent au déploiement : <strong>les foncti
   </div>
 </div>
 
+<div style="margin: 20px 0; padding: 18px 22px; border-radius: 10px; border: 1px solid rgba(52, 152, 219, 0.25); background: linear-gradient(120deg, #f0f7ff 0%, #ffffff 55%, #eef9f4 100%);">
+  <p style="font-size: 16px; font-weight: 700; color: #1a5276; margin: 0 0 8px 0;">🚀 Mode cluster edge fédéré illimité EasyAIoT</p>
+  <p style="font-size: 14px; line-height: 1.8; color: #333; margin: 0;">
+    Environ <strong>512 Mo</strong> de mémoire, <strong>occupation disque locale nulle côté edge sur Ceph</strong> (images d'alerte et objets métier écrits sur Ceph partagé, pas de disque métier local en edge) ; le compute peut être déployé en extension sur chaque site ; <strong>une seule commande</strong> suffit pour rendre intelligente une carte de développement ordinaire, tandis que les alertes et événements remontent vers le cloud.
+    Complémentaire aux trois niveaux full-stack ci-dessus — le full-stack assure le contrôle cloud-edge et l'orchestration métier, les nœuds EDGE assurent l'inférence légère sur site et l'extension horizontale illimitée : « un contrôle central, un déploiement edge à volonté ».
+  </p>
+</div>
+
 #### 🧠 Capacités d'IA
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -108,6 +116,7 @@ Beaucoup de projets IoT intelligents butent au déploiement : <strong>les foncti
   <li><strong>Cluster fédéré multi-nœuds centraux × multi-nœuds de travail</strong> : Conçu pour les déploiements inter-régionaux, multi-salles et cloud-bord, la plateforme adopte une architecture fédérée « N nœuds centraux + N nœuds de travail » — les nœuds centraux servent de plan de contrôle unifié et les nœuds de travail d'exécution calcul et média, formant un système de planification distribué horizontalement évolutif. Chaque nœud central gère son cluster de nœuds de travail, avec distribution d'exécution et déploiement distant en un clic des agents de surveillance, stockage distribué, moteurs de streaming, transcodage audio-vidéo, runtime d'analyse vidéo, inférence et entraînement de modèles ; plusieurs nœuds centraux peuvent s'interconnecter et se synchroniser. La vue en couloirs du cluster présente intuitivement la topologie « central — travail » et les niveaux de ressources, avec maintenance et distribution de composants par lot au niveau du couloir. Tâches algorithmiques, pipelines d'annotation automatique et relais de flux sont planifiés intelligemment selon le rôle des nœuds et les capacités GPU, avec files d'attente élastiques — ingestion massive de flux, inférence à haute concurrence et entraînement distribué coexistent dans un même cluster : « intégration fluide, planification claire, extension ouverte, gouvernance complète »</li>
   <li><strong>Pipeline d'orchestration d'annotation automatique SAM à démarrage zéro</strong> : Conçu pour les scénarios de démarrage à froid sans échantillons annotés ni modèle de détection utilisable, la plateforme intègre la segmentation SAM à vocabulaire ouvert et un moteur d'orchestration intelligent pour offrir un pipeline d'annotation sans surveillance en un clic. Selon la stratégie configurée, le système enchaîne automatiquement l'extraction d'images depuis les caméras, l'annotation initiale SAM par invites textuelles, le fine-tuning YOLO déclenché une fois les seuils atteints, l'inférence YOLO à haute vitesse en phase de production avec bascule intelligente vers SAM pour les détections manquées, l'entraînement itératif périodique et l'export automatique des jeux de données — bouclant la chaîne complète « capture — annotation — entraînement — export ». Le hub d'orchestration suit en temps réel la phase du pipeline et la progression de l'annotation, décide de manière autonome entre les modes SAM, YOLO et complément hybride, et détermine le moment de déclencher l'entraînement ; prend en charge la pause/reprise et la planification élastique sur files locales ou cluster. Avec configuration visuelle des stratégies et journaux d'exécution, les utilisateurs peuvent faire émerger une capacité de détection sur mesure à partir de zéro échantillon et zéro modèle — « définir les catégories en mots, laisser le modèle se construire » devient le chemin par défaut pour constituer des jeux de données</li>
   <li><strong>Cluster de calcul élastique à dizaines de milliers de nœuds et pool d'extension horizontale</strong> : Conçu pour les charges de travail IA et vidéo à très grande échelle, la plateforme constitue une base de calcul distribuée cloud-bord-périphérique qui regroupe tâches algorithmiques, relais de flux, services algorithmiques, entraînement et inférence de modèles dans un même cadre d'équilibrage de charge horizontal et d'élasticité. Chaque nouveau serveur intégré en un clic rejoint immédiatement le pool de calcul programmable ; le planificateur répartit automatiquement les tâches selon les niveaux de ressources et la pression métier, permettant une montée en charge linéaire — de quelques centaines à des dizaines de milliers de caméras, d'une machine unique à un cluster de dizaines de milliers de nœuds — sans redéploiement ni réglage manuel. Ingestion massive de flux, inférence à haute concurrence et entraînement distribué coexistent dans un même pool : « extension à la demande, exécution stable, gouvernance maîtrisée »</li>
+  <li><strong>Mode cluster edge fédéré illimité (EDGE)</strong> : Destiné aux cartes de développement ordinaires comme RK3588, Raspberry Pi et autres nœuds de calcul sur site, offre un runtime algorithmique edge léger sans interface, d'environ <strong>512 Mo</strong> de mémoire — <strong>une seule commande</strong> pour renseigner l'adresse du plan de contrôle et démarrer, rendant directement intelligente une carte de développement ordinaire ; le compute peut se déployer en extension sur chaque point, tandis que les alertes et événements remontent vers le cloud ; images d'alerte et captures écrites sur Ceph partagé, archivées par le sink central, <strong>0 occupation disque métier côté edge</strong> (pas de disque métier local, pas d'upload MinIO direct). Le plan d'exécution est extrait du plan de contrôle VIDEO vers un module <code>EDGE</code> indépendant : sans WEB, sans base métier locale, concentré sur « recevoir les commandes, exécuter l'inférence, renvoyer les événements ». Sur site, une seule configuration <code>EDGE_NODE_URL</code> ; via enroll / runtime-config, réception automatique des adresses du cluster EMQX, identifiants MQTT, chemins de tampon chaud Ceph et contrats Topic ; un nombre illimité de nœuds partagent le même bus EMQX, le plan de contrôle planifiant les tâches realtime / snapshot / patrol selon les capacités ; démarrage/arrêt via <code>mqtt/iot-algo-task-cmd</code>, heartbeat, ack, alertes et post-traitement remontant sur le même bus — vraiment « 512 Mo au départ, Ceph edge 0 disque, une commande pour déployer, expansion fédérée illimitée, intelligence sur site et agrégation cloud en un »</li>
   <li><strong>Visualisation spatiale Tianditu et analyse sur carte</strong> : Intégration avec la carte nationale chinoise Tianditu pour rassembler caméras, alertes et reconnaissance personnes/véhicules sur une seule carte, faisant passer la surveillance de « regarder les flux » à « voir l'ensemble ». Les modules média en streaming et alertes proposent une vue « Distribution cartographique » avec arborescence des appareils pour un focus régional, offrant une visibilité immédiate sur la disposition des points de contrôle et l'état en ligne. Clic sur carte, recherche de lieu et import par lot de coordonnées permettent de géolocaliser rapidement les canaux GB, NVR et caméras directes, afin que chaque flux ait un contexte spatial clair. Les alertes sont automatiquement positionnées via les coordonnées des caméras ; filtres par heure, type d'événement, tâche et étiquettes métier, avec accès aux captures et enregistrements en un clic — pour passer rapidement de « où cela s'est-il produit » à l'action. Combiné aux bibliothèques faciales et de plaques, les correspondances sur plusieurs sites forment des fils spatiaux — <strong>recherche de traces par personne</strong> pour reconstituer trajets et présence dans la zone surveillée ; <strong>recherche de traces par véhicule</strong> pour relier les passages et localiser itinéraires et zones d'arrêt, pour retrouver personnes/véhicules, déployer la patrouille et analyser après incident. Les appareils mobiles supportent aussi la relecture de trajectoires sur une frise chronologique. Basculement libre entre fond vectoriel et imagerie satellite avec ajustement automatique de la vue, pour que les responsables utilisent la carte comme levier de détection, ciblage et coordination</li>
   <li><strong>Déploiement multi-GPU Qwen / DeepSeek</strong> : Prend en charge le déploiement de grands modèles de langage tels que Qwen et DeepSeek en parallèle sur plusieurs GPU. Les ressources GPU peuvent être planifiées de manière flexible au niveau du cluster et des Workers, permettant la mise à l'échelle élastique et l'équilibrage de charge des instances de modèles pour fournir une inférence stable en cas de forte concurrence et de contextes longs</li>
   <li><strong>Compréhension intelligente des grands modèles visuels</strong> : Intégré avec le grand modèle visuel QwenVL3, prend en charge le raisonnement visuel profond et la compréhension sémantique des images vidéo en temps réel, capable d'effectuer une analyse intelligente et une compréhension de scène du contenu des images, fournissant des capacités cognitives visuelles plus riches, réalisant un saut de la perception au niveau des pixels à la compréhension au niveau sémantique</li>
@@ -225,7 +234,7 @@ En s'appuyant de manière innovante sur les grands modèles, nous construisons u
 ### 🏗️ Caractéristiques de l'architecture du projet
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-EasyAIoT n'est pas vraiment un seul projet, mais sept projets distincts.
+EasyAIoT n'est pas vraiment un seul projet, mais huit projets distincts.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -262,10 +271,10 @@ EasyAIoT répond activement à la stratégie de localisation, prenant pleinement
 <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 <h4 style="margin-top: 0; color: white; font-size: 18px;">📱 Support côté edge (périphérie)</h4>
 <ul style="font-size: 14px; line-height: 1.8; margin: 10px 0; padding-left: 20px;">
-  <li>Support complet des puces d'architecture ARM Rockchip (Ruixinwei)</li>
-  <li>Adaptation parfaite aux plateformes de calcul edge mainstream comme le RK3588</li>
-  <li>Optimisations profondes pour les scénarios edge</li>
-  <li>Réalise un déploiement léger de l'intelligence edge</li>
+  <li>Mode cluster edge fédéré illimité : environ 512 Mo de mémoire suffisent pour rejoindre le cluster</li>
+  <li>Occupation disque locale nulle côté edge sur Ceph — les objets métier ne sont pas stockés sur disque local</li>
+  <li>Une seule commande rend intelligente une carte de développement ordinaire comme le RK3588</li>
+  <li>Compute déployable en extension sur chaque point, alertes et événements agrégés vers le cloud</li>
 </ul>
 </div>
 
@@ -288,7 +297,7 @@ EasyAIoT répond activement à la stratégie de localisation, prenant pleinement
 ## 🧩 Structure du projet
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-EasyAIoT est composé de sept projets principaux :
+EasyAIoT est composé de huit projets principaux :
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -368,6 +377,20 @@ EasyAIoT est composé de sept projets principaux :
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module TASK</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">Module de traitement de tâches haute performance basé sur C++, responsable de l'exécution de tâches nécessitant beaucoup de calcul.</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module EDGE</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Mode cluster edge fédéré illimité</strong> : Huitième module principal, environ 512 Mo de mémoire ; occupation disque locale nulle côté edge sur Ceph ; une seule commande rend intelligente une carte de développement ordinaire, compute déployable en extension sur site avec agrégation vers le cloud, support de l'expansion fédérée illimitée</li>
+    <li><strong>Runtime algorithmique edge sans interface</strong> : Plan d'exécution algorithmique extrait de VIDEO ; CLI / systemd uniquement, sans WEB ni base métier locale, centré sur l'inférence edge et le retour d'événements</li>
+    <li><strong>Point de configuration unique</strong> : Sur site, configurer uniquement <code>EDGE_NODE_URL</code> (adresse du plan de contrôle iot-node) ; via <code>/admin-api/node/edge/enroll</code> et <code>runtime-config</code>, réception automatique de la liste des brokers MQTT, identifiants locataire, clientId, chemins de tampon chaud Ceph et contrats Topic algorithmiques</li>
+    <li><strong>Bus MQTT de bout en bout</strong> : Abonnement à <code>mqtt/iot-algo-task-cmd</code> pour les commandes démarrage/arrêt (filtrées par <code>targetNodeId</code>), publication de heartbeat / ack / alertes / post-traitement ; pas de Kafka direct ni de plan de gestion HTTP</li>
+    <li><strong>Occupation disque locale nulle côté edge sur Ceph</strong> : Images d'alerte et captures écrites sur chemins Ceph partagés ; le <code>iot-sink</code> central archive vers MinIO — pas de disque métier local en edge, EDGE n'a pas de responsabilité d'upload synchrone MinIO</li>
+    <li><strong>Extension de cluster illimitée</strong> : Un nombre quelconque de nœuds EDGE rejoignent le même cluster EMQX ; sonde ordonnée des brokers avec reprise en tête de liste en cas de panne ; extension horizontale des tâches realtime / snapshot / patrol</li>
+    <li><strong>Répartition claire avec le plan de contrôle</strong> : VIDEO conserve le CRUD des tâches, la politique de planification et la consultation des journaux ; EDGE prend en charge les boucles d'inférence <code>runtime/</code> et le lancement des workloads, et peut coexister avec l'Agent NODE (workloads HTTP génériques)</li>
+  </ul>
+</td>
 </tr>
 </table>
 

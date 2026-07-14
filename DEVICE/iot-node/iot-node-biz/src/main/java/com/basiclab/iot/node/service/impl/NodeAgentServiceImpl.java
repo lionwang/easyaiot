@@ -9,6 +9,7 @@ import com.basiclab.iot.node.domain.vo.NodeAgentHeartbeatReqVO;
 import com.basiclab.iot.node.domain.vo.NodeAgentRegisterReqVO;
 import com.basiclab.iot.node.enums.NodeRoleEnum;
 import com.basiclab.iot.node.enums.NodeStatusEnum;
+import com.basiclab.iot.node.service.EdgeNodeService;
 import com.basiclab.iot.node.service.NodeAgentService;
 import com.basiclab.iot.node.service.NodeClusterMetricsBroadcaster;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -40,6 +41,9 @@ public class NodeAgentServiceImpl implements NodeAgentService {
     @Resource
     private NodeClusterMetricsBroadcaster nodeClusterMetricsBroadcaster;
 
+    @Resource
+    private EdgeNodeService edgeNodeService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void register(NodeAgentRegisterReqVO reqVO) {
@@ -69,6 +73,15 @@ public class NodeAgentServiceImpl implements NodeAgentService {
         syncGpuCountFromHeartbeat(node, reqVO.getGpuInfo());
         syncCephMountFromHeartbeat(node, reqVO);
         computeNodeMapper.updateById(node);
+        // 边缘运行时节点：刷新 edge_node 管理表心跳/Ceph 状态
+        if (node.getTags() != null && ("true".equalsIgnoreCase(node.getTags().get("edge_runtime"))
+                || "edge".equalsIgnoreCase(node.getTags().get("node_tier")))) {
+            try {
+                edgeNodeService.syncEdgeNodeRecord(node, null);
+            } catch (Exception ignored) {
+                // 管理表失败不影响心跳主链路
+            }
+        }
 
         NodeMetricSnapshotDO snapshot = NodeMetricSnapshotDO.builder()
                 .nodeId(node.getId())

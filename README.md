@@ -36,7 +36,7 @@ Many smart IoT projects hit the same wall at deployment: video systems, device p
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-The platform comprises seven core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, and TASK</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side: GB28181 / ONVIF multi-protocol camera access, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and MQTT / TCP / HTTP IoT device lifecycle management. On the experience side: the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
+The platform comprises eight core modules—<strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, and EDGE</strong>—with Java as the stable control foundation, Python for AI and networking, and C++ for high-performance compute tasks, each language playing to its strengths. On the capability side: GB28181 / ONVIF multi-protocol camera access, real-time and snapshot algorithm tasks, YOLO object detection and SAM zero-shot auto-annotation, face/plate recognition, orchestrable business post-processing, federated compute cluster scheduling, and <strong>Infinite Federated Edge Cluster mode</strong> (~512MB memory, Ceph with zero local disk at the edge, one-line command turns ordinary boards intelligent, sprawl compute and aggregate to the cloud), and MQTT / TCP / HTTP IoT device lifecycle management. On the experience side: the Web console and mobile App / mini-program are capability-aligned, so command centers and field inspections share the same business logic—handle incidents anytime, anywhere.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
@@ -90,6 +90,14 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
   </div>
 </div>
 
+<div style="margin: 20px 0; padding: 18px 22px; border-radius: 10px; border: 1px solid rgba(52, 152, 219, 0.25); background: linear-gradient(120deg, #f0f7ff 0%, #ffffff 55%, #eef9f4 100%);">
+  <p style="font-size: 16px; font-weight: 700; color: #1a5276; margin: 0 0 8px 0;">🚀 EasyAIoT Infinite Federated Edge Cluster</p>
+  <p style="font-size: 14px; line-height: 1.8; color: #333; margin: 0;">
+    About <strong>512MB</strong> memory, <strong>Ceph with zero local disk at the edge</strong> (alerts and business objects write to shared Ceph—no local business disk); sprawl compute deployment with <strong>one command</strong> that turns ordinary development boards intelligent, while alerts and events aggregate to the cloud.
+    Complements the three full-stack profiles above—full-stack owns cloud-edge control and orchestration; EDGE nodes own lightweight on-site inference and infinite horizontal scale-out: “one control plane, edge anywhere.”
+  </p>
+</div>
+
 #### 🧠 AI Capabilities
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
@@ -108,6 +116,7 @@ Many intelligent IoT projects stall at deployment: <strong>full features won't f
   <li><strong>Multi-Central-Node × Multi-Worker-Node Federated Cluster</strong>: Designed for cross-region, multi-datacenter, and cloud-edge collaborative deployments, the platform adopts an "N central nodes + N worker nodes" federated architecture—central nodes serve as the unified control plane while worker nodes act as the compute and media execution plane, building a horizontally scalable distributed scheduling system. Each central node manages its own worker cluster, supporting runtime distribution and one-click remote deployment of monitoring agents, distributed storage, streaming engines, FFmpeg transcoding, video analytics runtimes, and model inference/training workloads. Multiple central nodes can interconnect and synchronize; the cluster swimlane view intuitively presents "central—worker" topology and resource levels, with lane-level batch maintenance and component distribution. Algorithm tasks, auto-labeling pipelines, and stream relay workloads are intelligently scheduled by node role and GPU capability with elastic queue dispatch—enabling massive stream ingestion, high-concurrency inference, and distributed training to run together in one cluster, truly delivering "onboard easily, schedule clearly, scale openly, govern completely"</li>
   <li><strong>SAM Zero-Start Auto-Labeling Orchestration Pipeline</strong>: Built for cold-start scenarios with no annotated samples and no usable detection model, the platform integrates SAM open-vocabulary segmentation with an intelligent orchestration engine to deliver a one-click, unattended labeling pipeline. Per strategy, the system automatically chains camera frame extraction, SAM text-prompt bootstrap labeling, YOLO fine-tuning once thresholds are met, production-phase YOLO high-speed inference with intelligent SAM fallback for missed detections, periodic iterative training, and automatic dataset packaging and export—closing the full "capture-annotate-train-export" loop. The orchestration hub continuously tracks pipeline phase and labeling progress, autonomously deciding among SAM, YOLO, and hybrid supplement modes and when to trigger training; supports pause/resume and elastic scheduling on local or cluster compute queues. With visual strategy configuration and run logs, users can grow a custom detection capability from zero samples and zero models, making "define categories in words, watch the model take shape" the default path for dataset building</li>
   <li><strong>Ten-Thousand-Node Elastic Compute Cluster & Horizontal Scaling Pool</strong>: Built for hyperscale AI and video workloads, the platform provides a cloud-edge-end distributed compute foundation that unifies algorithm tasks, stream relay, algorithm services, model training, and inference under one horizontal load-balancing and elastic scaling fabric. New servers join the fleet with one-click onboarding and immediately become schedulable compute units—the control plane automatically dispatches work and balances load based on resource levels and business pressure, enabling linear scaling from hundreds to tens of thousands of camera streams and from a single machine to ten-thousand-node clusters without redeployment or manual tuning. Massive stream ingestion, high-concurrency inference, and distributed training run together in a shared compute pool—truly delivering "scale on demand, run reliably, govern with confidence"</li>
+  <li><strong>Infinite Federated Edge Cluster (EDGE)</strong>: For ordinary development boards such as RK3588 and Raspberry Pi and on-site compute nodes, delivers a lightweight headless edge algorithm runtime at about <strong>512MB</strong> memory—<strong>one command</strong> writes the control-plane address and starts, turning ordinary boards intelligent; sprawl compute deployment by site while alerts and events aggregate to the cloud. Alert images and snapshots write to shared Ceph and are archived by the center sink—<strong>Ceph with zero local disk at the edge</strong> for business storage (no local business disk, no direct MinIO upload). Extracts the algorithm execution plane from the VIDEO control plane into a dedicated <code>EDGE</code> module—no WEB UI, no local business database, focused on "receive commands, run inference, report events." On site configure only <code>EDGE_NODE_URL</code>; via enroll / runtime-config, auto-provision EMQX cluster endpoints, MQTT credentials, Ceph hot-buffer paths, and Topic contracts. Any number of nodes share one EMQX bus; the control plane schedules realtime / snapshot / patrol algorithm tasks by node capability. Start/stop commands arrive on <code>mqtt/iot-algo-task-cmd</code>; heartbeat, ack, alert, and postprocess flow back on the same bus—truly "512MB to start, Ceph zero local disk at the edge, one command online, infinite federated scale-out, on-site intelligence and cloud aggregation together"</li>
   <li><strong>Tianditu Spatial Visualization & Map-Based Analysis</strong>: Integrated with China's national Tianditu map service, the platform brings cameras, alerts, and person/vehicle recognition onto a single map—upgrading surveillance from "watching feeds" to "seeing the big picture." Both the streaming media and alert modules offer a "Map Distribution" view with a device directory tree for regional focus, giving instant visibility into checkpoint layout and online status. Map click-to-pin, location search, and batch coordinate import help GB channels, NVR channels, and direct-connect cameras get mapped quickly so every feed has clear spatial context. Alerts are automatically placed on the map via linked camera coordinates; filter by time, event type, task, and business tags, then open snapshots and recordings in one click—helping operators move fast from "where did it happen" to action. Combined with face and plate libraries, hits across multiple sites can be woven into spatial trails—<strong>trace by person</strong> to reconstruct movement and presence within a monitored area; <strong>trace by vehicle</strong> to link passing records and pinpoint routes and stop zones for find-person/find-vehicle, patrol deployment, and post-incident review. Mobile devices also support track playback to replay patrol and travel paths on a timeline. Switch freely between vector and satellite basemaps with auto-fit view, so managers use the map as the anchor to spot anomalies, lock onto targets, and coordinate response faster</li>
   <li><strong>Qwen / DeepSeek Multi-GPU Deployment</strong>: Supports deploying Qwen, DeepSeek, and other large language models across multiple GPUs in parallel. GPU resources can be scheduled flexibly at the cluster and Worker level, enabling elastic scaling and load balancing of model instances to deliver stable inference under high concurrency and long-context workloads</li>
   <li><strong>Vision Large Model Intelligent Understanding</strong>: Integrated with QwenVL3 vision large model, supports deep visual reasoning and semantic understanding of real-time video frames, enabling intelligent analysis and scene comprehension of frame content, providing richer visual cognitive capabilities, achieving a leap from pixel-level perception to semantic-level understanding</li>
@@ -225,7 +234,7 @@ Innovatively leveraging large models to construct a zero-shot labeling technical
 ### 🏗️ Project Architecture Features
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-EasyAIoT is not actually one project; it is seven distinct projects.
+EasyAIoT is not actually one project; it is eight distinct projects.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -262,10 +271,10 @@ EasyAIoT actively responds to localization strategies, providing comprehensive s
 <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 <h4 style="margin-top: 0; color: white; font-size: 18px;">📱 Edge-Side Support</h4>
 <ul style="font-size: 14px; line-height: 1.8; margin: 10px 0; padding-left: 20px;">
-  <li>Comprehensive support for Rockchip ARM architecture chips</li>
-  <li>Perfect adaptation to mainstream edge computing platforms like RK3588</li>
-  <li>Deep optimization for edge scenarios</li>
-  <li>Enables lightweight deployment of edge intelligence</li>
+  <li>Infinite federated edge cluster: join with ~512MB memory</li>
+  <li>Ceph: zero local disk footprint—business objects never land on local disks</li>
+  <li>One command turns RK3588 and similar boards intelligent</li>
+  <li>Sprawl compute by site; alerts and events aggregate to the cloud</li>
 </ul>
 </div>
 
@@ -288,7 +297,7 @@ EasyAIoT actively responds to localization strategies, providing comprehensive s
 ## 🧩 Project Structure
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-EasyAIoT consists of seven core projects:
+EasyAIoT consists of eight core projects:
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -368,6 +377,20 @@ EasyAIoT consists of seven core projects:
 <tr>
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>TASK Module</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">C++-based high-performance task processing module responsible for compute-intensive task execution</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>EDGE Module</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Infinite Federated Edge Cluster Mode</strong>: The eighth core module—~512MB memory; Ceph zero local disk at the edge; one command turns ordinary boards intelligent; sprawl compute deployment with alerts and events aggregating to the cloud; infinite federated scale-out</li>
+    <li><strong>Headless Edge Algorithm Runtime</strong>: Algorithm execution surface extracted from VIDEO; pure CLI / systemd with no WEB UI and no local business database, focused on edge inference and event reporting</li>
+    <li><strong>Single Config Entry</strong>: On site configure only <code>EDGE_NODE_URL</code> (iot-node control-plane address); via <code>/admin-api/node/edge/enroll</code> and <code>runtime-config</code>, automatically receive MQTT broker list, tenant credentials, clientId, Ceph hot-buffer paths, and algorithm Topic contracts</li>
+    <li><strong>All-MQTT Bus</strong>: Subscribes to <code>mqtt/iot-algo-task-cmd</code> for start/stop commands (filtered by <code>targetNodeId</code>); publishes heartbeat / ack / alert / postprocess; no direct Kafka and no HTTP management plane</li>
+    <li><strong>Ceph: Zero Local Disk at the Edge</strong>: Alert images and snapshots write to shared Ceph paths; center-side <code>iot-sink</code> archives to MinIO—no local business disk at the edge, no MinIO sync-upload responsibility on EDGE</li>
+    <li><strong>Infinite Cluster Scale-Out</strong>: Any number of EDGE nodes join the same EMQX cluster; ordered broker probing with head-of-list retry on failure; supports realtime / snapshot / patrol algorithm task scale-out</li>
+    <li><strong>Clear Control-Plane Split</strong>: VIDEO keeps task CRUD, scheduling policy, and log query; EDGE owns the <code>runtime/</code> inference loops and workload launch, and can coexist with the NODE Agent (generic HTTP workloads)</li>
+  </ul>
+</td>
 </tr>
 </table>
 

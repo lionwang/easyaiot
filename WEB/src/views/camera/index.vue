@@ -161,6 +161,9 @@
         <TabPane key="7" tab="算法任务">
           <AlgorithmTask ref="algorithmTaskRef"/>
         </TabPane>
+        <TabPane key="14" v-if="edgeNodeEnabled" tab="边缘节点（联邦集群）">
+          <EdgeNodeManage ref="edgeNodeManageRef"/>
+        </TabPane>
         <TabPane key="9" v-if="gb28181Enabled" tab="节点管理">
           <Gb28181Node ref="gb28181NodeRef"/>
         </TabPane>
@@ -204,6 +207,7 @@ import SplitScreenMonitor from "./components/SplitScreenMonitor/index.vue";
 import CameraMapDistribution from './components/CameraMapDistribution/index.vue';
 import StorageSpace from "./components/StorageSpace/index.vue";
 import AlgorithmTask from "./components/AlgorithmTask/index.vue";
+import EdgeNodeManage from "./components/EdgeNodeManage/index.vue";
 import FaceLibrary from "./components/FaceLibrary/index.vue";
 import PlateLibrary from "./components/PlateLibrary/index.vue";
 import ScenarioPoseLibrary from "./components/ScenarioPoseLibrary/index.vue";
@@ -242,11 +246,17 @@ import {
   type CreateMethod,
   type DeviceKind,
 } from './utils/deviceCreateOptions';
-import { isFacePlateLibraryEnabled, isGb28181Enabled, isScenarioPoseLibraryEnabled } from '@/utils/deployProfile';
+import {
+  isEdgeNodeEnabled,
+  isFacePlateLibraryEnabled,
+  isGb28181Enabled,
+  isScenarioPoseLibraryEnabled,
+} from '@/utils/deployProfile';
 
 defineOptions({name: 'CAMERA'})
 
 const gb28181Enabled = isGb28181Enabled();
+const edgeNodeEnabled = isEdgeNodeEnabled();
 const facePlateLibraryEnabled = isFacePlateLibraryEnabled();
 const scenarioPoseLibraryEnabled = isScenarioPoseLibraryEnabled();
 
@@ -319,6 +329,7 @@ const storageSpaceRef = ref();
 
 // 算法任务组件引用
 const algorithmTaskRef = ref();
+const edgeNodeManageRef = ref();
 const faceLibraryRef = ref();
 const plateLibraryRef = ref();
 const scenarioPoseLibraryRef = ref();
@@ -337,6 +348,7 @@ const CAMERA_TAB_KEYS = {
   STORAGE: '4',
   STREAM_FORWARD: '6',
   ALGORITHM: '7',
+  EDGE_NODE: '14',
   GB_NODE: '9',
   FACE_LIBRARY: '10',
   PLATE_LIBRARY: '11',
@@ -355,6 +367,9 @@ const LEGACY_CAMERA_TAB_MAP: Record<string, string> = {
 /** 路由 ?tab=：优先匹配当前编号；旧编号通过 LEGACY_CAMERA_TAB_MAP 映射 */
 function normalizeCameraRouteTab(tab: string): string {
   if (!gb28181Enabled && tab === CAMERA_TAB_KEYS.GB_NODE) {
+    return CAMERA_TAB_KEYS.CAMERA_MAP;
+  }
+  if (!edgeNodeEnabled && tab === CAMERA_TAB_KEYS.EDGE_NODE) {
     return CAMERA_TAB_KEYS.CAMERA_MAP;
   }
   if (
@@ -387,6 +402,11 @@ const handleTabClick = (activeKey: string) => {
   // 切换到算法任务标签页时，刷新数据
   if (activeKey === CAMERA_TAB_KEYS.ALGORITHM && algorithmTaskRef.value) {
     algorithmTaskRef.value.refresh();
+  }
+  if (activeKey === CAMERA_TAB_KEYS.EDGE_NODE) {
+    void nextTick(() => {
+      edgeNodeManageRef.value?.refresh?.();
+    });
   }
   if (activeKey === CAMERA_TAB_KEYS.FACE_LIBRARY && faceLibraryRef.value) {
     faceLibraryRef.value.refresh?.();

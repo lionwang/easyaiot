@@ -46,6 +46,11 @@ export function isScenarioPoseLibraryEnabled(): boolean {
   return !isMiniDeployProfile();
 }
 
+/** mini 形态不支持无限联邦边缘集群，不展示边缘节点管理 */
+export function isEdgeNodeEnabled(): boolean {
+  return !isMiniDeployProfile();
+}
+
 /** mini 形态隐藏的顶级菜单（与后端 system_menu.name 一致） */
 const MINI_HIDDEN_MENU_NAMES = new Set([
   '集群管理',

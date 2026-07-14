@@ -519,6 +519,9 @@ def create_app(start_background_tasks=None):
                         ('prefer_gpu', 'BOOLEAN NOT NULL DEFAULT TRUE'),
                         ('target_node_id', 'BIGINT'),
                         ('node_id', 'BIGINT'),
+                        ('edge_node_id', 'BIGINT'),
+                        ('edge_node_name', 'VARCHAR(128)'),
+                        ('edge_node_host', 'VARCHAR(128)'),
                     ]:
                         result = db.session.execute(text(f"""
                             SELECT EXISTS (
@@ -642,6 +645,10 @@ def create_app(start_background_tasks=None):
                         ('task_id', 'INTEGER'),
                         ('task_name', 'VARCHAR(255)'),
                         ('business_tags', 'TEXT'),
+                        ('edge_node_id', 'BIGINT'),
+                        ('edge_node_name', 'VARCHAR(128)'),
+                        ('edge_node_host', 'VARCHAR(128)'),
+                        ('node_id', 'BIGINT'),
                     ]:
                         result = db.session.execute(text(f"""
                             SELECT EXISTS (

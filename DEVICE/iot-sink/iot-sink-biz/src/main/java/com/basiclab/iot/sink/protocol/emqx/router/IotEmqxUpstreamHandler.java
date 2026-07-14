@@ -23,9 +23,12 @@ public class IotEmqxUpstreamHandler {
 
     private final String serverId;
 
+    private final IotAlgoBusMqttHandler algoBusMqttHandler;
+
     public IotEmqxUpstreamHandler(IotEmqxUpstreamProtocol protocol) {
         this.deviceMessageService = SpringUtil.getBean(IotDeviceMessageService.class);
         this.serverId = protocol.getServerId();
+        this.algoBusMqttHandler = new IotAlgoBusMqttHandler();
     }
 
     /**
@@ -36,6 +39,12 @@ public class IotEmqxUpstreamHandler {
         String topic = mqttMessage.topicName();
         byte[] payload = mqttMessage.payload().getBytes();
         try {
+            // 算法总线 Topic：独立入库链路（带边缘节点维度）
+            if (algoBusMqttHandler.supports(topic)) {
+                algoBusMqttHandler.handle(topic, payload);
+                return;
+            }
+
             // 1. 解析主题，一次性获取所有信息
             String[] topicParts = topic.split("/");
             if (topicParts.length < 4 || StrUtil.hasBlank(topicParts[2], topicParts[3])) {
