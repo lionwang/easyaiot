@@ -183,8 +183,8 @@ export const NODE_METRIC = {
   runningTasks: '运行任务',
 } as const;
 
-/** 集群概览「查看节点」下拉中表示全部节点的 sentinel 值 */
-export const OVERVIEW_ALL_NODES_ID = 0;
+/** 集群概览「查看节点」下拉中表示全部节点的 sentinel 值（避免与真实 nodeId=0 冲突） */
+export const OVERVIEW_ALL_NODES_ID = -1;
 
 /** 折线图采样间隔（秒） */
 export const TREND_SAMPLE_INTERVAL_DEFAULT = 5;
