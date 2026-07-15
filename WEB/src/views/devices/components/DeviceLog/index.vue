@@ -20,6 +20,7 @@
             <SelectOption value="QUERY">查询</SelectOption>
             <SelectOption value="LOGIN">登录</SelectOption>
             <SelectOption value="LOGOUT">登出</SelectOption>
+            <SelectOption value="REPORT">设备上报</SelectOption>
           </Select>
         </div>
         <div class="filter-item">
@@ -237,6 +238,7 @@ const getActionTypeText = (type: string) => {
     QUERY: '查询',
     LOGIN: '登录',
     LOGOUT: '登出',
+    REPORT: '设备上报',
   };
   return typeMap[type] || type || '--';
 };
@@ -250,6 +252,7 @@ const getActionTypeColor = (type: string) => {
     QUERY: 'cyan',
     LOGIN: 'purple',
     LOGOUT: 'orange',
+    REPORT: 'geekblue',
   };
   return colorMap[type] || 'default';
 };

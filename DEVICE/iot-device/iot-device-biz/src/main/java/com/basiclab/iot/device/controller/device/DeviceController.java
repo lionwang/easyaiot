@@ -29,6 +29,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.annotation.security.PermitAll;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.constraints.NotEmpty;
 import java.io.IOException;
@@ -99,6 +100,7 @@ public class DeviceController extends BaseController {
      */
     @ApiOperation("EMQX钩子回调")
     @PostMapping("/webHook")
+    @PermitAll
     public void webHook(@RequestBody Map<String, Object> params) {
         log.info("EMQX钩子回调, params=" + params);
         String action = (String) params.get("event");
@@ -217,6 +219,15 @@ public class DeviceController extends BaseController {
     public AjaxResult add(@RequestBody Device device) {
         try {
             device.setDeviceIdentification(SnowflakeIdUtil.nextId());
+            if (StringUtils.isEmpty(device.getClientId())) {
+                device.setClientId("tcp-" + device.getDeviceIdentification());
+            }
+            if (StringUtils.isEmpty(device.getDeviceStatus())) {
+                device.setDeviceStatus("ENABLE");
+            }
+            if (StringUtils.isEmpty(device.getConnectStatus())) {
+                device.setConnectStatus("OFFLINE");
+            }
             return toAjax(deviceService.insertDevice(device));
         } catch (Exception e) {
             return AjaxResult.error(e.getMessage());
@@ -395,6 +406,15 @@ public class DeviceController extends BaseController {
             return AjaxResult.error("解除关联");
         }
         return AjaxResult.success();
+    }
+
+    @ApiOperation("调用设备服务（MQTT 下行）")
+    @PostMapping("/{deviceId}/invokeService")
+    public AjaxResult invokeService(@PathVariable("deviceId") Long deviceId,
+                                    @RequestParam String serviceIdentifier,
+                                    @RequestBody(required = false) Object params) {
+        boolean ok = deviceService.invokeService(deviceId, serviceIdentifier, params);
+        return ok ? AjaxResult.success("服务调用已下发") : AjaxResult.error("服务调用失败");
     }
 
     @ApiOperation("获取设备连接状态统计")

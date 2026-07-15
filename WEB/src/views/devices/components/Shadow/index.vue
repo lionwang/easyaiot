@@ -100,6 +100,8 @@ const displayJson = computed(() => {
 const fetchShadowData = async () => {
   loading.value = true;
   try {
+    shadowVersion.value = '';
+    lastUpdateTime.value = '';
     defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
     
     const response = await defHttp.get(
@@ -130,16 +132,14 @@ const fetchShadowData = async () => {
           : '';
       }
     } else if (typeof response === 'object' && response !== null) {
-      data = response;
-      
-      // 提取版本和时间信息
-      if (response.version) {
-        shadowVersion.value = response.version;
-      }
-      if (response.updateTime) {
-        lastUpdateTime.value = moment(response.updateTime).format('YYYY-MM-DD HH:mm:ss');
-      } else if (response.timestamp) {
-        lastUpdateTime.value = moment(response.timestamp).format('YYYY-MM-DD HH:mm:ss');
+      // 新接口返回影子内容和元数据；否则兼容旧接口直接返回影子对象。
+      const hasMetadata = Object.prototype.hasOwnProperty.call(response, 'shadow');
+      data = hasMetadata ? response.shadow || {} : response;
+
+      shadowVersion.value = response.version ?? data?.version ?? '';
+      const updateTime = response.updateTime ?? data?.updateTime ?? data?.timestamp;
+      if (updateTime) {
+        lastUpdateTime.value = moment(updateTime).format('YYYY-MM-DD HH:mm:ss');
       }
     }
     

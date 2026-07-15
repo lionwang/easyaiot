@@ -2,6 +2,8 @@ package com.basiclab.iot.sink.protocol.emqx.router;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.spring.SpringUtil;
+import com.basiclab.iot.common.core.util.TenantUtils;
+import com.basiclab.iot.common.utils.json.JsonUtils;
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 import com.basiclab.iot.sink.protocol.emqx.IotEmqxUpstreamProtocol;
 import com.basiclab.iot.sink.messagebus.publisher.message.IotDeviceMessageService;
@@ -55,15 +57,30 @@ public class IotEmqxUpstreamHandler {
             String productIdentification = topicParts[2];
             String deviceIdentification = topicParts[3];
 
-            // 3. 解码消息（使用 topic 匹配编解码器）
-            IotDeviceMessage message = deviceMessageService.decodeDeviceMessageByTopic(payload, topic);
-            if (message == null) {
-                log.warn("[handle][topic({}) payload({}) 消息解码失败]", topic, new String(payload));
+            // 标准 IoT Topic 要求消息体携带 tenantId，用于多租户上下文
+            IotDeviceMessage envelope = JsonUtils.parseObject(payload, IotDeviceMessage.class);
+            if (envelope == null || envelope.getTenantId() == null) {
+                log.warn("[handle][topic({}) message is missing tenantId]", topic);
                 return;
             }
+            Long tenantId = envelope.getTenantId();
 
-            // 4. 发送消息到队列
-            deviceMessageService.sendDeviceMessage(message, productIdentification, deviceIdentification, serverId);
+            // 3. 解码消息（使用 topic 匹配编解码器）
+            TenantUtils.execute(tenantId, () -> {
+                IotDeviceMessage message = deviceMessageService.decodeDeviceMessageByTopic(payload, topic);
+                if (message == null) {
+                    log.warn("[handle][topic({}) payload({}) 消息解码失败]", topic, new String(payload));
+                    return;
+                }
+
+                // 4. 发送消息到队列
+                if (message.getTenantId() != null && !tenantId.equals(message.getTenantId())) {
+                    throw new IllegalArgumentException("tenantId changed while decoding MQTT message");
+                }
+                message.setTenantId(tenantId);
+                deviceMessageService.sendDeviceMessage(
+                        message, productIdentification, deviceIdentification, serverId);
+            });
         } catch (Exception e) {
             log.error("[handle][topic({}) payload({}) 处理异常]", topic, new String(payload), e);
         }

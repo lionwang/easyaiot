@@ -41,6 +41,11 @@ export function getBasicColumns(): BasicColumn[] {
       width: 120,
     },
     {
+      title: '接入协议',
+      dataIndex: 'protocolType',
+      width: 100,
+    },
+    {
       title: '连接状态',
       dataIndex: 'connectStatus',
       width: 90,

@@ -12,6 +12,41 @@ import { isProtectedStreamUrl, signStreamUrl } from './streamTicket';
 
 export type DevicePlayModalOpener = (visible: boolean, data: Record<string, any>) => void;
 
+function parseProviderJson(value: unknown): Record<string, any> | null {
+  if (!value) return null;
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从设备记录中提取火山 RTC（volc）播放地址 */
+export function extractVolcLiveUrl(record: Record<string, any> | null | undefined): string | null {
+  if (!record) return null;
+  const provider =
+    parseProviderJson(record.provider) ||
+    parseProviderJson(record.live_provider) ||
+    parseProviderJson(record.providerJson) ||
+    parseProviderJson(record.provider_json);
+
+  const providerType = String(
+    provider?.url_type || provider?.type || record.providerType || record.urlType || '',
+  ).toLowerCase();
+  const providerUrl = String(provider?.url || '').trim();
+  if (providerType === 'volc' && providerUrl) return providerUrl;
+
+  for (const candidate of [record.source, record.url, record.directUrl]) {
+    const value = String(candidate || '').trim();
+    if (!value) continue;
+    if (value.startsWith('volc://')) return decodeURIComponent(value.slice('volc://'.length));
+  }
+  return null;
+}
+
 export function isGb28181DeviceRecord(record: { source?: string | null; device_kind?: string }) {
   return isGb28181Device(record.source, record.device_kind);
 }
@@ -19,6 +54,7 @@ export function isGb28181DeviceRecord(record: { source?: string | null; device_k
 export function hasDirectPlayStream(record: DeviceInfo, ai = false): boolean {
   if (isGb28181DeviceRecord(record)) return false;
   if ((record as { device_kind?: string }).device_kind === 'gb28181_sip') return false;
+  if (!ai && extractVolcLiveUrl(record as Record<string, any>)) return true;
   if (ai) {
     return !!(record.ai_http_stream || record.ai_rtmp_stream);
   }

@@ -3,16 +3,19 @@
 <mapper namespace="com.basiclab.iot.sink.dal.mapper.TdEngineMapper">
 
     <insert id="insertTableData">
-        insert into #{dataBaseName}.#{tableName}
+        insert into ${dataBaseName}.${tableName}
         <foreach item="item" collection="schemaFieldValues" separator=","
                  open="(" close=")" index="">
             ${item.fieldName}
         </foreach>
-        using #{dataBaseName}.#{superTableName}
+        using ${dataBaseName}.${superTableName}
         tags
         <foreach item="item" collection="tagsFieldValues" separator=","
                  open="(" close=")" index="">
             <choose>
+                <when test="item.fieldValue == null">
+                    NULL
+                </when>
                 <!-- Check if dataType is not null and needs quoting -->
                 <when test="item.dataType != null and item.dataType.quoted">
                     '${item.fieldValue}'
@@ -31,6 +34,9 @@
         <foreach item="item" collection="schemaFieldValues" separator=","
                  open="(" close=")" index="">
             <choose>
+                <when test="item.fieldValue == null">
+                    NULL
+                </when>
                 <!-- Check if dataType is not null and needs quoting -->
                 <when test="item.dataType != null and item.dataType.quoted">
                     '${item.fieldValue}'

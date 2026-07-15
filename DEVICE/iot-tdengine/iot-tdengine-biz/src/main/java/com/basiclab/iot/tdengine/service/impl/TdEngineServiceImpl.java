@@ -3,6 +3,7 @@ package com.basiclab.iot.tdengine.service.impl;
 import com.basiclab.iot.device.constant.FunctionTypeConstant;
 import com.basiclab.iot.device.constant.TdengineConstant;
 import com.basiclab.iot.device.domain.device.vo.TDDeviceDataResp;
+import com.basiclab.iot.tdengine.constant.SuperTableTypeConstant;
 import com.basiclab.iot.tdengine.domain.DeviceData;
 import com.basiclab.iot.tdengine.domain.Fields;
 import com.basiclab.iot.tdengine.domain.SelectDto;
@@ -16,9 +17,6 @@ import com.basiclab.iot.tdengine.mapper.TdEngineMapper;
 import com.basiclab.iot.tdengine.service.TdEngineService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Isolation;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.util.*;
@@ -31,7 +29,6 @@ import java.util.stream.Collectors;
  */
 @Service
 @Slf4j
-@Transactional(isolation = Isolation.DEFAULT, propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
 public class TdEngineServiceImpl implements TdEngineService {
 
     @Resource
@@ -154,10 +151,23 @@ public class TdEngineServiceImpl implements TdEngineService {
     @Override
     public List<DeviceData> getLastRowsListByIdentifier(TDDeviceDataRequest tdDeviceDataRequest) {
         List<DeviceData> list = new ArrayList<>();
-        try{
+        try {
+            if (tdDeviceDataRequest.getDeviceIdentification() != null) {
+                String safeId = tdDeviceDataRequest.getDeviceIdentification().replaceAll("[^A-Za-z0-9_]", "_");
+                if (!safeId.isEmpty()
+                        && !Character.isLetter(safeId.charAt(0))
+                        && safeId.charAt(0) != '_') {
+                    safeId = "d_" + safeId;
+                }
+                tdDeviceDataRequest.setDeviceIdentification(safeId);
+            }
+            if (tdDeviceDataRequest.getTdSuperTableName() == null
+                    || "device_data".equals(tdDeviceDataRequest.getTdSuperTableName())) {
+                tdDeviceDataRequest.setTdSuperTableName(SuperTableTypeConstant.PROPERTY_UPSTREAM_REPORT);
+            }
             list = tdengineMapper.getLastRowsListByIdentifier(tdDeviceDataRequest);
-        }catch (Exception e){
-            log.error("getLastRowsListByIdentifier error: {}",e.getMessage());
+        } catch (Exception e) {
+            log.error("getLastRowsListByIdentifier error: {}", e.getMessage());
         }
         return list;
     }
@@ -166,7 +176,18 @@ public class TdEngineServiceImpl implements TdEngineService {
     public List<TDDeviceDataResp> deviceInfoHistoryPage(TDDeviceDataHistoryRequest request) {
         request.setFunctionType(FunctionTypeConstant.PROPERTIES);
         request.setTdDatabaseName(TdengineConstant.IOT_DEVICE);
-        request.setTdSuperTableName(TdengineConstant.DEVICE_DATA);
+        // MQTT 上行属性落在 st_property_upstream_report_{deviceIdentification}
+        request.setTdSuperTableName(SuperTableTypeConstant.PROPERTY_UPSTREAM_REPORT);
+        // 与 sink 写入侧子表命名规则保持一致
+        if (request.getDeviceIdentification() != null) {
+            String safeId = request.getDeviceIdentification().replaceAll("[^A-Za-z0-9_]", "_");
+            if (!safeId.isEmpty()
+                    && !Character.isLetter(safeId.charAt(0))
+                    && safeId.charAt(0) != '_') {
+                safeId = "d_" + safeId;
+            }
+            request.setDeviceIdentification(safeId);
+        }
         try {
             return tdengineMapper.getDeviceHistory(request);
         } catch (Exception e) {
@@ -178,17 +199,30 @@ public class TdEngineServiceImpl implements TdEngineService {
     @Override
     public List<Map<String, Object>> queryDeviceTimeSeriesData(com.basiclab.iot.tdengine.domain.query.DeviceTimeSeriesQueryRequest request) {
         try {
-            // 设置数据库名称
             if (request.getTdDatabaseName() == null) {
                 request.setTdDatabaseName("iot_device");
             }
-            // 确保超级表名称已设置
             if (request.getSuperTableName() == null) {
-                request.setSuperTableName(request.getSuperTableType());
+                String type = request.getSuperTableType();
+                if (type != null && !type.startsWith("st_")) {
+                    // 允许传枚举名 PROPERTY_UPSTREAM_REPORT
+                    request.setSuperTableName("st_" + type.toLowerCase());
+                } else {
+                    request.setSuperTableName(type);
+                }
+            }
+            if (request.getDeviceIdentification() != null) {
+                String safeId = request.getDeviceIdentification().replaceAll("[^A-Za-z0-9_]", "_");
+                if (!safeId.isEmpty()
+                        && !Character.isLetter(safeId.charAt(0))
+                        && safeId.charAt(0) != '_') {
+                    safeId = "d_" + safeId;
+                }
+                request.setDeviceIdentification(safeId);
             }
             return tdengineMapper.queryDeviceTimeSeriesData(request);
         } catch (Exception e) {
-            log.error("查询设备时序数据异常：deviceIdentification={}, superTableType={}, error={}", 
+            log.error("查询设备时序数据异常：deviceIdentification={}, superTableType={}, error={}",
                     request.getDeviceIdentification(), request.getSuperTableType(), e.getMessage(), e);
             return Collections.emptyList();
         }

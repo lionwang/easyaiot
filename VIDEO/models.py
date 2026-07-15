@@ -62,6 +62,7 @@ class Device(db.Model):
     port = db.Column(db.SMALLINT, nullable=True)
     username = db.Column(db.String(100), nullable=True)
     password = db.Column(db.String(100), nullable=True)
+    skylink_token = db.Column(db.Text, nullable=True, comment='大疆司空 X-User-Token（机场/无人机共用）')
     mac = db.Column(db.String(17), nullable=True)
     manufacturer = db.Column(db.String(100), nullable=False)
     model = db.Column(db.String(100), nullable=False)

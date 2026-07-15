@@ -1,6 +1,7 @@
 package com.basiclab.iot.sink.auth.service;
 
 import com.basiclab.iot.sink.biz.dto.IotDeviceAuthReqDTO;
+import com.basiclab.iot.sink.dal.dataobject.DeviceDO;
 import com.basiclab.iot.sink.util.IotDeviceAuthUtils;
 
 /**
@@ -20,6 +21,8 @@ public interface DeviceAuthService {
      * @return 认证结果
      */
     boolean authDevice(IotDeviceAuthReqDTO authReqDTO);
+
+    DeviceDO authenticateDevice(IotDeviceAuthReqDTO authReqDTO);
 
     /**
      * 创建设备 Token

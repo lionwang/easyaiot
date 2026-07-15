@@ -3,6 +3,7 @@ package com.basiclab.iot.device.domain.device.vo;
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.*;
@@ -115,6 +116,25 @@ public class Product implements Serializable {
      */
     @ApiModelProperty("密码")
     private String password;
+
+    /**
+     * RSA 公钥（PEM）
+     */
+    @ApiModelProperty("认证公钥")
+    private String publicKey;
+
+    /**
+     * RSA 私钥（PEM）
+     */
+    @ApiModelProperty("认证私钥")
+    @JsonIgnore
+    private String privateKey;
+
+    /**
+     * 仅在后端新生成密钥时返回一次，不映射数据库。
+     */
+    @TableField(exist = false)
+    private String generatedPrivateKey;
 
     /**
      * 连接实例

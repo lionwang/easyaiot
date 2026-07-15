@@ -1,5 +1,8 @@
 package com.basiclab.iot.sink.service.data;
 
+import com.basiclab.iot.common.core.util.TenantUtils;
+import com.basiclab.iot.sink.dal.mapper.DeviceMapper;
+import com.basiclab.iot.device.enums.device.DataTypeEnum;
 import com.basiclab.iot.sink.enums.IotDeviceTopicEnum;
 import com.basiclab.iot.sink.enums.IotDeviceTopicMethodMapping;
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
@@ -12,11 +15,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * DeviceDataStorageService
@@ -41,6 +44,9 @@ public class DeviceDataStorageService {
     @Resource
     private DeviceRedisStorageService deviceRedisStorageService;
 
+    @Resource
+    private DeviceMapper deviceMapper;
+
     /**
      * 存储设备消息数据
      * <p>
@@ -57,21 +63,30 @@ public class DeviceDataStorageService {
             return;
         }
 
-        try {
-            // 0. 根据 Topic 标准映射验证并标准化 method 字段
-            normalizeMethodByTopic(message, topicEnum);
+        // 0. 根据 Topic 标准映射验证并标准化 method 字段
+        normalizeMethodByTopic(message, topicEnum);
 
+        // 页面直接读取 PostgreSQL，优先保证设备状态、影子和日志可用。
+        storeToDevice(message, topicEnum);
+
+        try {
             // 1. 存储到TDEngine（历史数据）
             storeToTdEngine(message, topicEnum);
+        } catch (Exception e) {
+            log.error("[storeDeviceData][TDEngine存储失败，messageId: {}, topic: {}]",
+                    message.getId(), topicEnum.name(), e);
+        }
 
+        try {
             // 2. 存储到Redis（设备数据缓存）
             deviceRedisStorageService.storeDeviceData(message, topicEnum);
-
-            log.debug("[storeDeviceData][数据存储成功，messageId: {}, topic: {}, method: {}]", 
-                    message.getId(), topicEnum.name(), message.getMethod());
         } catch (Exception e) {
-            log.error("[storeDeviceData][数据存储失败，messageId: {}, topic: {}]", message.getId(), topicEnum.name(), e);
+            log.error("[storeDeviceData][Redis存储失败，messageId: {}, topic: {}]",
+                    message.getId(), topicEnum.name(), e);
         }
+
+        log.debug("[storeDeviceData][数据存储处理完成，messageId: {}, topic: {}, method: {}]",
+                message.getId(), topicEnum.name(), message.getMethod());
     }
 
     /**
@@ -83,6 +98,50 @@ public class DeviceDataStorageService {
      * @param message   设备消息
      * @param topicEnum Topic枚举
      */
+    private void storeToDevice(IotDeviceMessage message, IotDeviceTopicEnum topicEnum) {
+        if (message.getTenantId() == null || StrUtil.isBlank(message.getDeviceId())) {
+            log.warn("[storeToDevice][tenantId or deviceId is missing, messageId: {}]", message.getId());
+            return;
+        }
+        try {
+            Long deviceId = Long.valueOf(message.getDeviceId());
+            TenantUtils.execute(message.getTenantId(), () -> {
+                LocalDateTime reportTime = message.getReportTime() != null
+                        ? message.getReportTime() : LocalDateTime.now();
+                int updated = deviceMapper.updateDeviceConnectStatus(deviceId, "ONLINE", reportTime);
+                if (updated == 0) {
+                    log.warn("[storeToDevice][device was not updated, messageId: {}, tenantId: {}, deviceId: {}]",
+                            message.getId(), message.getTenantId(), deviceId);
+                    return;
+                }
+
+                if (topicEnum == IotDeviceTopicEnum.SHADOW_UPSTREAM_REPORT
+                        || topicEnum == IotDeviceTopicEnum.PROPERTY_UPSTREAM_REPORT) {
+                    if (message.getParams() != null) {
+                        deviceMapper.updateDeviceShadow(deviceId, JSONUtil.toJsonStr(message.getParams()));
+                    }
+                } else if (topicEnum == IotDeviceTopicEnum.LOG_UPSTREAM_REPORT) {
+                    Map<String, Object> logEntry = new LinkedHashMap<>();
+                    logEntry.put("id", message.getId());
+                    logEntry.put("actionType", "REPORT");
+                    logEntry.put("userName", extractDeviceIdentification(message));
+                    logEntry.put("status", "SUCCESS");
+                    logEntry.put("actionData", message.getParams());
+                    logEntry.put("createTime", reportTime.toString());
+                    int logUpdated = deviceMapper.appendDeviceLog(
+                            deviceId, message.getTenantId(), JSONUtil.toJsonStr(logEntry));
+                    if (logUpdated == 0) {
+                        log.warn("[storeToDevice][device log was not appended, messageId: {}, deviceId: {}]",
+                                message.getId(), deviceId);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.error("[storeToDevice][failed to persist device state, messageId: {}, topic: {}]",
+                    message.getId(), topicEnum.name(), e);
+        }
+    }
+
     private void normalizeMethodByTopic(IotDeviceMessage message, IotDeviceTopicEnum topicEnum) {
         // 获取 Topic 对应的标准 Method
         String standardMethod = IotDeviceTopicMethodMapping.getMethodByTopic(topicEnum);
@@ -130,8 +189,10 @@ public class DeviceDataStorageService {
                 return;
             }
 
-            // 构建子表名称（使用设备标识）
-            String tableName = buildTableName(superTableName, message.getDeviceId());
+            // 构建子表名称（与查询侧约定：超级表_设备标识）
+            String deviceIdentification = extractDeviceIdentification(message);
+            String tableName = buildTableName(superTableName,
+                    StrUtil.blankToDefault(deviceIdentification, message.getDeviceId()));
 
             // 构建字段值列表
             List<Fields> schemaFieldValues = buildSchemaFieldValues(message, topicEnum);
@@ -203,7 +264,13 @@ public class DeviceDataStorageService {
      * @return 子表名称
      */
     private String buildTableName(String superTableName, String deviceId) {
-        return superTableName + "_" + deviceId;
+        // TDengine 表名仅允许字母数字下划线
+        String safeId = StrUtil.blankToDefault(deviceId, "unknown")
+                .replaceAll("[^A-Za-z0-9_]", "_");
+        if (!Character.isLetter(safeId.charAt(0)) && safeId.charAt(0) != '_') {
+            safeId = "d_" + safeId;
+        }
+        return superTableName + "_" + safeId;
     }
 
     /**
@@ -216,67 +283,51 @@ public class DeviceDataStorageService {
     private List<Fields> buildSchemaFieldValues(IotDeviceMessage message, IotDeviceTopicEnum topicEnum) {
         List<Fields> fields = new ArrayList<>();
 
-        // 时间戳字段（TDEngine要求第一个字段必须是timestamp）
-        long timestamp = message.getReportTime() != null
-                ? message.getReportTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                : Instant.now().toEpochMilli();
-        fields.add(new Fields("ts", timestamp, null, null));
-
-        // report_time
-        fields.add(new Fields("report_time", message.getReportTime() != null
-                ? message.getReportTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                : timestamp, null, null));
+        // 时间戳字段（TDEngine要求第一个字段必须是timestamp；DDL 为 TIMESTAMP）
+        LocalDateTime reportTime = message.getReportTime() != null
+                ? message.getReportTime() : LocalDateTime.now();
+        long millis = reportTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        fields.add(new Fields("ts", millis, DataTypeEnum.TIMESTAMP, null));
+        fields.add(new Fields("report_time", millis, DataTypeEnum.TIMESTAMP, null));
 
         // device_id
-        fields.add(new Fields("device_id", message.getDeviceId(), null, null));
-
-        // tenant_id
-        fields.add(new Fields("tenant_id", message.getTenantId(), null, null));
-
-        // product_identification（从topic中提取或从设备信息中获取）
-        String productIdentification = extractProductIdentification(message);
-        fields.add(new Fields("product_identification", productIdentification, null, null));
-
-        // device_identification（从topic中提取或从设备信息中获取）
-        String deviceIdentification = extractDeviceIdentification(message);
-        fields.add(new Fields("device_identification", deviceIdentification, null, null));
+        fields.add(new Fields("device_id", message.getDeviceId(), DataTypeEnum.BIGINT, null));
 
         // server_id
-        fields.add(new Fields("server_id", message.getServerId(), null, null));
+        fields.add(new Fields("server_id", escapeSqlText(message.getServerId()), DataTypeEnum.NCHAR, null));
 
         // request_id
-        fields.add(new Fields("request_id", message.getRequestId(), null, null));
+        fields.add(new Fields("request_id", escapeSqlText(message.getRequestId()), DataTypeEnum.NCHAR, null));
 
         // method
-        fields.add(new Fields("method", message.getMethod(), null, null));
+        fields.add(new Fields("method", escapeSqlText(message.getMethod()), DataTypeEnum.NCHAR, null));
 
         // params（JSON格式）
-        if (message.getParams() != null) {
-            fields.add(new Fields("params", JSONUtil.toJsonStr(message.getParams()), null, null));
+        if (hasParamsColumn(topicEnum) && message.getParams() != null) {
+            fields.add(new Fields("params", escapeSqlText(JSONUtil.toJsonStr(message.getParams())), DataTypeEnum.NCHAR, null));
         }
 
         // data（JSON格式）
         if (message.getData() != null) {
-            fields.add(new Fields("data", JSONUtil.toJsonStr(message.getData()), null, null));
+            fields.add(new Fields("data", escapeSqlText(JSONUtil.toJsonStr(message.getData())), DataTypeEnum.NCHAR, null));
         }
 
         // code
-        fields.add(new Fields("code", message.getCode(), null, null));
+        fields.add(new Fields("code", message.getCode(), DataTypeEnum.INT, null));
 
         // msg
-        fields.add(new Fields("msg", message.getMsg(), null, null));
+        fields.add(new Fields("msg", escapeSqlText(message.getMsg()), DataTypeEnum.NCHAR, null));
 
         // topic
-        fields.add(new Fields("topic", message.getTopic(), null, null));
-
-        // identifier（用于事件上报和服务调用）
-        if (topicEnum == IotDeviceTopicEnum.EVENT_UPSTREAM_REPORT
-                || topicEnum == IotDeviceTopicEnum.SERVICE_UPSTREAM_INVOKE_RESPONSE) {
-            String identifier = extractIdentifier(message.getTopic());
-            fields.add(new Fields("identifier", identifier, null, null));
-        }
+        fields.add(new Fields("topic", escapeSqlText(message.getTopic()), DataTypeEnum.NCHAR, null));
 
         return fields;
+    }
+
+    private boolean hasParamsColumn(IotDeviceTopicEnum topicEnum) {
+        return topicEnum != IotDeviceTopicEnum.PROPERTY_UPSTREAM_DESIRED_SET_ACK
+                && topicEnum != IotDeviceTopicEnum.PROPERTY_UPSTREAM_DESIRED_QUERY_RESPONSE
+                && topicEnum != IotDeviceTopicEnum.SERVICE_UPSTREAM_INVOKE_RESPONSE;
     }
 
     /**
@@ -291,20 +342,20 @@ public class DeviceDataStorageService {
 
         // device_identification
         String deviceIdentification = extractDeviceIdentification(message);
-        tags.add(new Fields("device_identification", deviceIdentification, null, null));
+        tags.add(new Fields("device_identification", escapeSqlText(deviceIdentification), DataTypeEnum.NCHAR, null));
 
         // tenant_id
-        tags.add(new Fields("tenant_id", message.getTenantId(), null, null));
+        tags.add(new Fields("tenant_id", message.getTenantId(), DataTypeEnum.BIGINT, null));
 
         // product_identification
         String productIdentification = extractProductIdentification(message);
-        tags.add(new Fields("product_identification", productIdentification, null, null));
+        tags.add(new Fields("product_identification", escapeSqlText(productIdentification), DataTypeEnum.NCHAR, null));
 
         // identifier（用于事件上报和服务调用）
         if (topicEnum == IotDeviceTopicEnum.EVENT_UPSTREAM_REPORT
                 || topicEnum == IotDeviceTopicEnum.SERVICE_UPSTREAM_INVOKE_RESPONSE) {
             String identifier = extractIdentifier(message.getTopic());
-            tags.add(new Fields("identifier", identifier, null, null));
+            tags.add(new Fields("identifier", escapeSqlText(identifier), DataTypeEnum.NCHAR, null));
         }
 
         return tags;
@@ -319,6 +370,10 @@ public class DeviceDataStorageService {
     private String extractProductIdentification(IotDeviceMessage message) {
         if (StrUtil.isNotBlank(message.getTopic())) {
             String[] parts = message.getTopic().split("/");
+            if (parts.length >= 4 && "iot".equals(parts[1])) {
+                return parts[2];
+            }
+            // 保留原来的
             if (parts.length >= 2) {
                 return parts[1];
             }
@@ -335,6 +390,9 @@ public class DeviceDataStorageService {
     private String extractDeviceIdentification(IotDeviceMessage message) {
         if (StrUtil.isNotBlank(message.getTopic())) {
             String[] parts = message.getTopic().split("/");
+            if (parts.length >= 4 && "iot".equals(parts[1])) {
+                return parts[3];
+            }
             if (parts.length >= 3) {
                 return parts[2];
             }
@@ -351,17 +409,16 @@ public class DeviceDataStorageService {
     private String extractIdentifier(String topic) {
         if (StrUtil.isNotBlank(topic)) {
             String[] parts = topic.split("/");
-            // 查找包含identifier的部分
-            for (String part : parts) {
-                if (StrUtil.isNotBlank(part) && !part.equals("iot") && !part.matches("^[a-zA-Z0-9]{20}$")) {
-                    // 可能是identifier
-                    if (parts.length > 5) {
-                        return part;
-                    }
-                }
+            // 事件和服务上行 Topic 的 identifier 都位于第 8 段（包含开头空段）。
+            if (parts.length > 7) {
+                return parts[7];
             }
         }
         return "";
+    }
+
+    private String escapeSqlText(Object value) {
+        return value == null ? null : value.toString().replace("'", "''");
     }
 }
 

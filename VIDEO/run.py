@@ -362,6 +362,7 @@ def create_app(start_background_tasks=None):
                     ('use_type', 'SMALLINT'),
                     ('supply_light_type', 'SMALLINT'),
                     ('resolution', 'VARCHAR(100)'),
+                    ('skylink_token', 'TEXT'),
                 ):
                     r = db.session.execute(text("""
                         SELECT EXISTS (

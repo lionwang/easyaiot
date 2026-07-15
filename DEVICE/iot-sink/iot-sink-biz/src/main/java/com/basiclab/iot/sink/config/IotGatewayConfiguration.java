@@ -21,6 +21,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 @Configuration
 @EnableConfigurationProperties(IotGatewayProperties.class)
@@ -47,7 +48,7 @@ public class IotGatewayConfiguration {
 
         @Bean
         public IotHttpDownstreamSubscriber iotHttpDownstreamSubscriber(IotHttpUpstreamProtocol httpUpstreamProtocol,
-                IotMessageBus messageBus) {
+                @org.springframework.context.annotation.Lazy IotMessageBus messageBus) {
             return new IotHttpDownstreamSubscriber(httpUpstreamProtocol, messageBus);
         }
     }
@@ -79,7 +80,7 @@ public class IotGatewayConfiguration {
 
         @Bean
         public IotEmqxDownstreamSubscriber iotEmqxDownstreamSubscriber(IotEmqxUpstreamProtocol mqttUpstreamProtocol,
-                IotMessageBus messageBus) {
+                @org.springframework.context.annotation.Lazy IotMessageBus messageBus) {
             return new IotEmqxDownstreamSubscriber(mqttUpstreamProtocol, messageBus);
         }
     }
@@ -112,7 +113,7 @@ public class IotGatewayConfiguration {
                                                                      IotDeviceMessageService messageService,
                                                                      IotDeviceService deviceService,
                                                                      IotTcpConnectionManager connectionManager,
-                                                                     IotMessageBus messageBus) {
+                                                                     @Lazy IotMessageBus messageBus) {
             return new IotTcpDownstreamSubscriber(protocolHandler, messageService, deviceService, connectionManager,
                     messageBus);
         }
@@ -150,7 +151,7 @@ public class IotGatewayConfiguration {
         @Bean
         public IotMqttDownstreamSubscriber iotMqttDownstreamSubscriber(IotMqttUpstreamProtocol mqttUpstreamProtocol,
                                                                        IotMqttDownstreamHandler downstreamHandler,
-                                                                       IotMessageBus messageBus) {
+                                                                       @Lazy IotMessageBus messageBus) {
             return new IotMqttDownstreamSubscriber(mqttUpstreamProtocol, downstreamHandler, messageBus);
         }
 

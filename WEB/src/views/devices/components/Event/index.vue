@@ -150,7 +150,7 @@ const fetchEventData = async () => {
     }
 
     const response = await getEventList(params);
-    const data = response?.data || response?.list || [];
+    const data = response?.rows || response?.data || response?.list || [];
     
     // 按时间倒序排序（最新的在第一条）
     logList.value = data.sort((a, b) => {
@@ -193,11 +193,12 @@ const formatTime = (time: string) => {
 
 // 格式化日志内容
 const formatLogContent = (log: any) => {
-  if (log.eventContent) {
-    if (typeof log.eventContent === 'object') {
-      return JSON.stringify(log.eventContent, null, 2);
+  const content = log.message ?? log.eventContent;
+  if (content) {
+    if (typeof content === 'object') {
+      return JSON.stringify(content, null, 2);
     }
-    return log.eventContent;
+    return content;
   }
   return '--';
 };

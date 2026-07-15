@@ -45,6 +45,12 @@
             :template-identification="state.record.templateIdentification"
           />
         </TabPane>
+        <TabPane key="script" tab="协议脚本">
+          <ProductScript
+            :product-id="state.record.id"
+            :product-identification="state.record.productIdentification"
+          />
+        </TabPane>
       </Tabs>
     </Card>
   </div>
@@ -54,6 +60,7 @@ import {onMounted, reactive} from 'vue';
 import {TabPane, Tabs} from 'ant-design-vue';
 import ProductDetail from './ProductDetail.vue';
 import PhysicalModal from './PhysicalModal.vue';
+import ProductScript from './ProductScript.vue';
 import {productModel} from "@/views/product/Data";
 import {getDeviceProfileDetail} from "@/api/device/product";
 import {useRoute} from 'vue-router'

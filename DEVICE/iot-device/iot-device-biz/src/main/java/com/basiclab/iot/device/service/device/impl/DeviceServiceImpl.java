@@ -41,6 +41,7 @@ import com.basiclab.iot.file.RemoteFileService;
 import com.basiclab.iot.file.domain.vo.SysFileVo;
 import com.basiclab.iot.sink.biz.IotDownstreamMessageApi;
 import com.basiclab.iot.sink.enums.IotDeviceMessageMethodEnum;
+import com.basiclab.iot.sink.enums.IotDeviceTopicEnum;
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 import com.basiclab.iot.tdengine.RemoteTdEngineService;
 import com.basiclab.iot.tdengine.domain.SelectDto;
@@ -409,76 +410,25 @@ public class DeviceServiceImpl extends ServiceImpl<DeviceMapper, Device> impleme
             deviceLocation.setDeviceIdentification(device.getDeviceIdentification());
             deviceLocationService.insertOrUpdateSelective(deviceLocation);*/
 
-            //基础TOPIC集合
-            Map<String, String> topicMap = new HashMap<>();
-            if (DeviceType.GATEWAY.getValue().equals(product.getProductType())) {
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/add", "边设备添加子设备");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/addResponse", "物联网平台返回的添加子设备的响应");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/delete", "边设备删除子设备");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/deleteResponse", "物联网平台返回的删除子设备的响应");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/update", "边设备更新子设备状态");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/updateResponse", "物联网平台返回的更新子设备状态的响应");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/datas", "边设备上报数据");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/command", "物联网平台给设备或边设备下发命令");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/commandResponse", "边设备返回给物联网平台的命令响应");
-
-                // 添加OTA更新命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaCommand", "物联网平台给网关设备下发OTA远程升级命令");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaCommandResponse", "网关设备返回给物联网平台的OTA远程升级命令响应");
-
-                // 添加OTA拉取命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaPull", "网关设备拉取物联网平台的最新软固件信息");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaPullResponse", "物联网平台响应软固件信息给设备");
-
-                // 添加OTA上报命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaReport", "网关设备向物联网平台上报软固件版本");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaReportResponse", "物联网平台接收到上报软固件信息响应");
-
-                // 添加OTA读取命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaRead", "物联网平台读取设备软固件版本");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaReadResponse", "网关设备回复物联网平台读取设备固件版本指令");
-
-            } else if (DeviceType.COMMON.getValue().equals(product.getProductType())) {
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/datas", "普通设备上报数据");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/command", "物联网平台给普通设备下发命令");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/commandResponse", "普通设备返回给物联网平台的命令响应");
-                // 添加OTA更新命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaCommand", "物联网平台给普通设备下发OTA远程升级命令");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaCommandResponse", "普通设备返回给物联网平台的OTA远程升级命令响应");
-
-                // 添加OTA拉取命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaPull", "普通设备拉取物联网平台的最新软固件信息");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaPullResponse", "物联网平台响应软固件信息给普通设备");
-
-                // 添加OTA上报命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaReport", "普通设备向物联网平台上报软固件版本");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaReportResponse", "物联网平台接收到上报软固件信息响应");
-
-                // 添加OTA读取命令和响应
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaRead", "物联网平台读取设备软固件版本");
-                topicMap.put("/" + "v1" + "/devices/" + device.getDeviceIdentification() + "/topo/otaReadResponse", "普通设备回复物联网平台读取设备固件版本指令");
-
-            }
-            //设备基础Topic数据存储
-            for (Map.Entry<String, String> entry : topicMap.entrySet()) {
+            // 基础 TOPIC：与 iot-sink IotDeviceTopicEnum / 前端 Topic 页一致的 /iot/{product}/{device}/... 标准
+            String productId = device.getProductIdentification();
+            String deviceId = device.getDeviceIdentification();
+            for (IotDeviceTopicEnum topicEnum : IotDeviceTopicEnum.values()) {
+                String topic = topicEnum.getTopicTemplate().contains("${identifier}")
+                        ? topicEnum.buildTopic(productId, deviceId, "{identifier}")
+                        : topicEnum.buildTopic(productId, deviceId);
                 DeviceTopic deviceTopic = new DeviceTopic();
-                deviceTopic.setDeviceIdentification(device.getDeviceIdentification());
+                deviceTopic.setDeviceIdentification(deviceId);
                 deviceTopic.setType(DeviceTopicEnum.BASIS.getKey());
-                deviceTopic.setTopic(entry.getKey());
-                if (entry.getKey().startsWith("/" + "v1" + "/devices/") && entry.getKey().endsWith("datas")) {
-                    deviceTopic.setPublisher("边设备");
-                    deviceTopic.setSubscriber("物联网平台");
-                } else if (entry.getKey().startsWith("/" + "v1" + "/devices/") && entry.getKey().endsWith("commandResponse")) {
-                    deviceTopic.setPublisher("边设备");
-                    deviceTopic.setSubscriber("物联网平台");
-                } else if (entry.getKey().startsWith("/" + "v1" + "/devices/") && (entry.getKey().endsWith("Response") || entry.getKey().endsWith("command"))) {
+                deviceTopic.setTopic(topic);
+                if (topicEnum.isNeedReply()) {
                     deviceTopic.setPublisher("物联网平台");
-                    deviceTopic.setSubscriber("边设备");
+                    deviceTopic.setSubscriber("设备");
                 } else {
-                    deviceTopic.setPublisher("边设备");
+                    deviceTopic.setPublisher("设备");
                     deviceTopic.setSubscriber("物联网平台");
                 }
-                deviceTopic.setRemark(entry.getValue());
+                deviceTopic.setRemark(topicEnum.getDescription());
                 deviceTopicService.save(deviceTopic);
             }
         }

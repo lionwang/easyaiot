@@ -59,6 +59,12 @@ public class DeviceDO {
      */
     private String password;
 
+    private String authMode;
+
+    private String publicKey;
+
+    private String privateKey;
+
     /**
      * 产品标识
      */
@@ -78,6 +84,16 @@ public class DeviceDO {
      * 协议类型
      */
     private String protocolType;
+
+    /**
+     * 设备 IP 地址
+     */
+    private String ipAddress;
+
+    /**
+     * 设备扩展配置 JSON
+     */
+    private String extension;
 
     /**
      * 租户编号

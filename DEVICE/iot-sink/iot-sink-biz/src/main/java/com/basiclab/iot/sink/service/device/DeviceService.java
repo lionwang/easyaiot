@@ -41,5 +41,8 @@ public interface DeviceService {
      * @return 设备信息
      */
     DeviceDO getDeviceForAuth(String clientId, String userName, String password, String deviceStatus, String protocolType);
+
+    DeviceDO getDeviceForProtocolAuth(String clientId, String productIdentification, String deviceIdentification,
+                                      String deviceStatus, String protocolType);
 }
 

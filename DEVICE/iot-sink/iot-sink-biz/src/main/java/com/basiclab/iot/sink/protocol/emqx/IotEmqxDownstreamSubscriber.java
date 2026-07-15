@@ -1,24 +1,24 @@
 package com.basiclab.iot.sink.protocol.emqx;
 
+import cn.hutool.core.util.StrUtil;
+import com.basiclab.iot.common.core.util.TenantUtils;
+import com.basiclab.iot.sink.enums.IotDeviceTopicEnum;
 import com.basiclab.iot.sink.messagebus.core.IotMessageBus;
 import com.basiclab.iot.sink.messagebus.core.IotMessageSubscriber;
 import com.basiclab.iot.sink.mq.message.IotDeviceMessage;
 import com.basiclab.iot.sink.util.IotDeviceMessageUtils;
 import com.basiclab.iot.sink.protocol.emqx.router.IotEmqxDownstreamHandler;
 import lombok.extern.slf4j.Slf4j;
-
-import javax.annotation.PostConstruct;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 
 /**
  * IotEmqxDownstreamSubscriber
  *
- * @author 翱翔的雄库鲁
- * @email andywebjava@163.com
- * @wechat EasyAIoT2025
+ * 延迟注册消息总线，避免与 IotKafkaMessageBus 循环依赖。
  */
-
 @Slf4j
-public class IotEmqxDownstreamSubscriber implements IotMessageSubscriber<IotDeviceMessage> {
+public class IotEmqxDownstreamSubscriber
+        implements IotMessageSubscriber<IotDeviceMessage>, SmartInitializingSingleton {
 
     private final IotEmqxDownstreamHandler downstreamHandler;
 
@@ -32,9 +32,10 @@ public class IotEmqxDownstreamSubscriber implements IotMessageSubscriber<IotDevi
         this.downstreamHandler = new IotEmqxDownstreamHandler(protocol);
     }
 
-    @PostConstruct
-    public void init() {
+    @Override
+    public void afterSingletonsInstantiated() {
         messageBus.register(this);
+        log.info("[afterSingletonsInstantiated][EMQX 下行订阅器注册成功，主题：{}]", getTopic());
     }
 
     @Override
@@ -44,16 +45,28 @@ public class IotEmqxDownstreamSubscriber implements IotMessageSubscriber<IotDevi
 
     @Override
     public String getGroup() {
-        // 保证点对点消费，需要保证独立的 Group，所以使用 Topic 作为 Group
         return getTopic();
     }
 
     @Override
     public void onMessage(IotDeviceMessage message) {
+        if (message == null) {
+            log.warn("[onMessage][接收到空的下行消息]");
+            return;
+        }
         log.debug("[onMessage][接收到下行消息, messageId: {}, method: {}, deviceId: {}]",
                 message.getId(), message.getMethod(), message.getDeviceId());
         try {
-            // 1. 校验
+            // 指定网关 Topic 只应承载下行消息，防止历史或异常消息形成 MQTT 回环。
+            if (StrUtil.isNotBlank(message.getTopic())) {
+                IotDeviceTopicEnum topicEnum = IotDeviceTopicEnum.matchTopic(message.getTopic());
+                if (topicEnum != null && !topicEnum.isNeedReply()) {
+                    log.debug("[onMessage][忽略上行消息, messageId: {}, topic: {}]",
+                            message.getId(), message.getTopic());
+                    return;
+                }
+            }
+
             String method = message.getMethod();
             if (method == null) {
                 log.warn("[onMessage][消息方法为空, messageId: {}, deviceId: {}]",
@@ -61,12 +74,15 @@ public class IotEmqxDownstreamSubscriber implements IotMessageSubscriber<IotDevi
                 return;
             }
 
-            // 2. 处理下行消息
-            downstreamHandler.handle(message);
+            if (message.getTenantId() == null) {
+                log.warn("[onMessage][下行消息缺少tenantId, messageId: {}]", message.getId());
+                return;
+            }
+
+            TenantUtils.execute(message.getTenantId(), () -> downstreamHandler.handle(message));
         } catch (Exception e) {
             log.error("[onMessage][处理下行消息失败, messageId: {}, method: {}, deviceId: {}]",
                     message.getId(), message.getMethod(), message.getDeviceId(), e);
         }
     }
-
 }

@@ -3,11 +3,11 @@
 <mapper namespace="com.basiclab.iot.tdengine.mapper.TdEngineMapper">
 
     <resultMap id="deviceDataMap" type="com.basiclab.iot.tdengine.domain.DeviceData">
-        <result column="last_row(report_time)" property="lastUpdateTime" />
-        <result column="last_row(function_type)" property="functionType" />
-        <result column="last_row(identifier)" property="identifier" />
-        <result column="last_row(data_type)" property="dataType" />
-        <result column="last_row(data_value)" property="dataValue" />
+        <result column="lastUpdateTime" property="lastUpdateTime" />
+        <result column="functionType" property="functionType" />
+        <result column="identifier" property="identifier" />
+        <result column="dataType" property="dataType" />
+        <result column="dataValue" property="dataValue" />
     </resultMap>
 
     <update id="createDatabase" parameterType="String">
@@ -252,23 +252,26 @@
         from #{dataBaseName}.#{tableName}
     </select>
 
+    <!-- MQTT 上行整包写入 params，这里取最近一条；属性拆分在 device 侧完成 -->
     <select id="getLastRowsListByIdentifier" resultMap="deviceDataMap">
-        <foreach collection="identifierList" item="item" index="index" separator="UNION ALL" close=";">
-            select last_row(*) from ${tdDatabaseName}.${tdSuperTableName}_${deviceIdentification}
-            WHERE function_type = #{functionType} and identifier = #{item}
-        </foreach>
+        select report_time as lastUpdateTime,
+               'properties' as functionType,
+               '' as identifier,
+               'JSON' as dataType,
+               params as dataValue
+        from ${tdDatabaseName}.${tdSuperTableName}_${deviceIdentification}
+        order by report_time desc
+        limit 1
     </select>
     <select id="getDeviceHistory"
             resultType="com.basiclab.iot.device.domain.device.vo.TDDeviceDataResp">
-        select report_time as ts, function_type as functionType, identifier as propertyCode, data_type as dataType, data_value as dataValue
+        select report_time as ts,
+               'properties' as functionType,
+               method as propertyCode,
+               'JSON' as dataType,
+               params as dataValue
         from ${tdDatabaseName}.${tdSuperTableName}_${deviceIdentification}
         <where>
-            <if test="functionType != null and functionType != ''">
-                AND function_type = #{functionType}
-            </if>
-            <if test="identifier != null and identifier != ''">
-                AND identifier = #{identifier}
-            </if>
             <if test="startTime != null and startTime != ''">
                 AND report_time >= #{startTime}
             </if>

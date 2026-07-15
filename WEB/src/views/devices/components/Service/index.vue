@@ -42,6 +42,7 @@
             查询
           </Button>
           <Button @click="handleReset">重置</Button>
+          <Button type="dashed" @click="openInvokeModal">下发服务</Button>
         </div>
       </div>
     </div>
@@ -104,14 +105,31 @@
       </div>
     </div>
   </div>
+
+  <Modal
+    v-model:open="invokeVisible"
+    title="下发设备服务"
+    :confirm-loading="invoking"
+    @ok="handleInvoke"
+  >
+    <Form layout="vertical">
+      <FormItem label="服务标识" required>
+        <Input v-model:value="invokeForm.serviceIdentifier" placeholder="如 switch / reboot" />
+      </FormItem>
+      <FormItem label="参数 JSON">
+        <Textarea v-model:value="invokeForm.paramsJson" :rows="6" />
+      </FormItem>
+    </Form>
+  </Modal>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { getServices } from '@/api/device/entity-views';
+import { invokeDeviceService } from '@/api/device/devices';
 import moment from 'moment';
-import { Input, Select, SelectOption, Tag, DatePicker } from 'ant-design-vue';
+import { Input, Select, SelectOption, Tag, DatePicker, Modal, Form, FormItem, Textarea } from 'ant-design-vue';
 import { Icon } from '@/components/Icon';
 import { useMessage } from '@/hooks/web/useMessage';
 import { Button } from '@/components/Button'
@@ -131,6 +149,44 @@ const filterForm = reactive({
   serviceName: undefined,
   timeRange: undefined,
 });
+
+const invokeVisible = ref(false);
+const invokeForm = reactive({
+  serviceIdentifier: '',
+  paramsJson: '{}',
+});
+const invoking = ref(false);
+
+function openInvokeModal() {
+  invokeForm.serviceIdentifier = filterForm.serviceName || '';
+  invokeForm.paramsJson = '{}';
+  invokeVisible.value = true;
+}
+
+async function handleInvoke() {
+  if (!invokeForm.serviceIdentifier) {
+    createMessage.warning('请输入服务标识');
+    return;
+  }
+  let params: any = {};
+  try {
+    params = JSON.parse(invokeForm.paramsJson || '{}');
+  } catch (e) {
+    createMessage.error('参数必须是合法 JSON');
+    return;
+  }
+  invoking.value = true;
+  try {
+    await invokeDeviceService(deviceId.value, invokeForm.serviceIdentifier, params);
+    createMessage.success('服务调用已下发');
+    invokeVisible.value = false;
+    fetchServiceData();
+  } catch (e: any) {
+    createMessage.error(e?.message || '下发失败');
+  } finally {
+    invoking.value = false;
+  }
+}
 
 // 日志列表
 const logList = ref<any[]>([]);

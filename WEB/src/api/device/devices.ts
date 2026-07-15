@@ -126,6 +126,23 @@ export const getDevicethingModels = (_params) => {
   );
 };
 
+/** 调用设备服务（MQTT 下行 thing.service.invoke） */
+export const invokeDeviceService = (deviceId: string | number, serviceIdentifier: string, data?: any) => {
+  defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
+  return defHttp.post(
+    {
+      url: `${API.Devices}/${deviceId}/invokeService`,
+      params: { serviceIdentifier },
+      data: data || {},
+      headers: {
+        // @ts-ignore
+        ignoreCancelToken: true,
+      },
+    },
+    { isTransformResponse: true },
+  );
+};
+
 export const getDevicethingmodelsHistory = (params) => {
   defHttp.setHeader({ 'X-Authorization': 'Bearer ' + localStorage.getItem('jwt_token') });
   // debugger;

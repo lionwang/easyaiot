@@ -150,7 +150,7 @@ public class IotDeviceMessageServiceImpl implements IotDeviceMessageService {
             productId = topicParts[2]; // 通常格式为 /iot/{productIdentification}/{deviceIdentification}/...
         }
         
-        // 调用 JS 脚本进行前置处理
+        // 调用 JS 脚本进行前置处理（无脚本时直接走 Codec，标准 JSON 可正常解码）
         byte[] scriptResult = bytes;
         if (productId != null) {
             byte[] result = jsScriptManager.invokeRawDataToProtocol(productId, topic, bytes);
@@ -158,6 +158,9 @@ public class IotDeviceMessageServiceImpl implements IotDeviceMessageService {
                 log.debug("[decodeDeviceMessageByTopic][使用 JS 脚本处理后的数据，productIdentification: {}，数据长度: {}]", 
                         productId, result.length);
                 scriptResult = result;
+            } else {
+                log.debug("[decodeDeviceMessageByTopic][未配置或未命中脚本，使用原始数据走 Codec，productIdentification: {}]",
+                        productId);
             }
         }
         
