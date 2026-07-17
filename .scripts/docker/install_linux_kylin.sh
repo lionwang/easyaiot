@@ -778,6 +778,8 @@ install_linux() {
     detect_architecture
     check_docker "$@"
     check_docker_compose
+    # ★ 必须先修宿主机 /etc/resolv.conf：daemon.json 的 dns 不能修复 dockerd 拉镜像
+    ensure_host_dns_for_docker "docker.cnb.cool" || print_warning "宿主机 DNS 异常，后续拉取/构建可能失败"
     configure_docker_mirror
     ensure_docker_buildx_plugin || print_warning "buildx 未就绪，后续本地 docker build 可能失败"
     prepare_runtime_environment

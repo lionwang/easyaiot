@@ -481,14 +481,23 @@ arm_pip_wheels_ready_for() {
 }
 
 # build-runtime 跨架构构建前：缺失则预下载 .build-cache/arm/{ai,video}/pip-wheels
+# 用法: ensure_arm_python_wheels_cached [root] [module...]
+#   未传 module 时默认 ai + video；可传 ai / video 限定范围（单模块 build-runtime 用）
 ensure_arm_python_wheels_cached() {
     local root="${1:-${EASYAIOT_ROOT:-.}}"
+    shift || true
+    local -a modules=()
+    if [ "$#" -gt 0 ]; then
+        modules=("$@")
+    else
+        modules=("${EASYAIOT_PYTHON_CACHE_MODULES[@]}")
+    fi
     local module cache_script base
     base="$(easyaiot_build_cache_base "$root")"
 
     init_easyaiot_build_cache_dirs "$root"
 
-    for module in "${EASYAIOT_PYTHON_CACHE_MODULES[@]}"; do
+    for module in "${modules[@]}"; do
         if arm_pip_wheels_ready_for "$root" "$module"; then
             echo "[build-cache] [${module}] ARM pip-wheels 已就绪: $(arm_pip_wheels_build_context_dir_for "$root" "$module")"
             continue
