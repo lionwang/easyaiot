@@ -100,6 +100,7 @@ MIDDLEWARE_SERVICES=(
     "Milvus"
     "SRS"
     "NodeRED"
+    "FUXA"
     "ZLMediaKit"
 )
 
@@ -128,6 +129,7 @@ MIDDLEWARE_PORTS["MinIO"]="9000"
 MIDDLEWARE_PORTS["Milvus"]="9091"
 MIDDLEWARE_PORTS["SRS"]="1935"
 MIDDLEWARE_PORTS["NodeRED"]="1880"
+MIDDLEWARE_PORTS["FUXA"]="1881"
 MIDDLEWARE_PORTS["EMQX"]="1883"
 MIDDLEWARE_PORTS["ZLMediaKit"]="6080"
 
@@ -142,6 +144,7 @@ MIDDLEWARE_HEALTH_ENDPOINTS["MinIO"]="/minio/health/live"
 MIDDLEWARE_HEALTH_ENDPOINTS["Milvus"]="/healthz"
 MIDDLEWARE_HEALTH_ENDPOINTS["SRS"]="/api/v1/versions"
 MIDDLEWARE_HEALTH_ENDPOINTS["NodeRED"]="/"
+MIDDLEWARE_HEALTH_ENDPOINTS["FUXA"]="/"
 MIDDLEWARE_HEALTH_ENDPOINTS["EMQX"]="/api/v5/status"
 MIDDLEWARE_HEALTH_ENDPOINTS["ZLMediaKit"]="/index/api/getServerConfig"
 
@@ -1829,6 +1832,28 @@ create_nodered_directories() {
     fi
 }
 
+# 创建并设置 FUXA 数据目录权限（工程 / 历史 / 日志 / 图片）
+create_fuxa_directories() {
+    local fuxa_root="${SCRIPT_DIR}/fuxa_data"
+    local dirs=(
+        "${fuxa_root}/appdata"
+        "${fuxa_root}/db"
+        "${fuxa_root}/logs"
+        "${fuxa_root}/images"
+    )
+    print_info "创建 FUXA 数据目录并设置权限..."
+    local ok=true
+    for d in "${dirs[@]}"; do
+        if ! set_data_dir_perms "1000:1000" "$d"; then
+            ok=false
+            print_warning "无法设置 FUXA 目录权限，请手动执行: sudo chmod -R 777 $d"
+        fi
+    done
+    if [ "$ok" = true ]; then
+        print_success "FUXA 数据目录权限已设置 (UID 1000:1000, 777)"
+    fi
+}
+
 # 创建并设置 PostgreSQL 数据目录权限
 create_postgresql_directories() {
     local postgresql_data_dir="${SCRIPT_DIR}/db_data/data"
@@ -2007,6 +2032,10 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/srs_data/data:::"              # SRS 数据（使用默认权限）
         "${SCRIPT_DIR}/srs_data/playbacks:::"          # SRS 回放（使用默认权限）
         "${SCRIPT_DIR}/nodered_data/data:1000:1000:777" # NodeRED 数据
+        "${SCRIPT_DIR}/fuxa_data/appdata:1000:1000:777" # FUXA 工程数据
+        "${SCRIPT_DIR}/fuxa_data/db:1000:1000:777"      # FUXA 历史库
+        "${SCRIPT_DIR}/fuxa_data/logs:1000:1000:777"    # FUXA 日志
+        "${SCRIPT_DIR}/fuxa_data/images:1000:1000:777"  # FUXA 图片
         "${SCRIPT_DIR}/../zlmediakit/www:::"         # ZLMediaKit Web 目录（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/log:::"         # ZLMediaKit 日志（使用默认权限）
         "${SCRIPT_DIR}/../zlmediakit/conf:::"        # ZLMediaKit 配置（使用默认权限）
@@ -2090,6 +2119,7 @@ create_all_storage_directories() {
         "${SCRIPT_DIR}/milvus_config"
         "${SCRIPT_DIR}/srs_data"
         "${SCRIPT_DIR}/nodered_data"
+        "${SCRIPT_DIR}/fuxa_data"
         "${SCRIPT_DIR}/../zlmediakit"
         "${SCRIPT_DIR}/logs"
     )
@@ -3823,11 +3853,12 @@ init_databases() {
     
     # 数据库清单按命名规约自动发现：<名字>10.sql -> 库 <名字>20
     # （与 schema-sync/sync_schema_migra.sh 同一规约）。新增模块只需在
-    # .scripts/postgresql/ 放一个 *10.sql，无需再改本脚本的硬编码清单。
+    # .scripts/postgresql/（或 .scripts/go-view/）放一个 *10.sql，无需再改本脚本硬编码清单。
     local sql_dir="$(cd "${SCRIPT_DIR}/../postgresql" && pwd)"
+    local go_view_sql_dir="$(cd "${SCRIPT_DIR}/../go-view" && pwd)"
     declare -A DB_SQL_MAP
     local _sqlf _base
-    for _sqlf in "$sql_dir"/*10.sql; do
+    for _sqlf in "$sql_dir"/*10.sql "$go_view_sql_dir"/*10.sql; do
         [ -e "$_sqlf" ] || continue
         _base="$(basename "$_sqlf" .sql)"
         case "$_base" in
@@ -3835,10 +3866,16 @@ init_databases() {
         esac
     done
     if [ ${#DB_SQL_MAP[@]} -eq 0 ]; then
-        print_warning "未在 $sql_dir 发现任何 *10.sql 文件，跳过数据库初始化"
+        print_warning "未在 $sql_dir 或 $go_view_sql_dir 发现任何 *10.sql 文件，跳过数据库初始化"
         return 0
     fi
     print_info "自动发现 ${#DB_SQL_MAP[@]} 个库: ${!DB_SQL_MAP[*]}"
+
+    # mini / standard 不部署可视化模块，跳过 iot-visualize20
+    if is_visualize_disabled_deploy_profile && [ -n "${DB_SQL_MAP[iot-visualize20]+x}" ]; then
+        unset 'DB_SQL_MAP[iot-visualize20]'
+        print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE}) 跳过数据库 iot-visualize20"
+    fi
     
     local success_count=0
     local total_count=${#DB_SQL_MAP[@]}
@@ -4146,7 +4183,7 @@ collect_skippable_optional_services() {
     echo "${skip_services[@]}"
 }
 
-# 检查并拉取缺失的镜像
+# 检查并拉取缺失的镜像（按当前部署形态跳过不启动的服务，如 mini/standard 不拉 FUXA）
 check_and_pull_images() {
     print_info "检查所需镜像是否存在..."
     
@@ -4161,25 +4198,56 @@ check_and_pull_images() {
     local missing_images=0
     local existing_images=0
     local images_to_check=()
-    
-    # 从 docker-compose 配置中提取所有镜像信息
-    local compose_config=$(mw_compose config 2>/dev/null || echo "")
-    
-    if [ -z "$compose_config" ]; then
-        print_warning "无法读取 docker-compose 配置，将直接启动服务"
+    local skipped_images=0
+
+    # 当前形态不部署 / 默认关闭的服务：不检查、不拉取其镜像
+    local -a skip_services=()
+    local skip_svc img svc
+    for skip_svc in $(middleware_skipped_services); do
+        [ -n "$skip_svc" ] && skip_services+=("$skip_svc")
+    done
+    for skip_svc in "${DISABLED_BY_DEFAULT_MIDDLEWARE_SERVICES[@]}"; do
+        case "$skip_svc" in
+            TDengine|TDengine-init)
+                [ "${EASYAIOT_ENABLE_TDENGINE:-0}" = "1" ] && continue
+                ;;
+            EMQX)
+                [ "${EASYAIOT_ENABLE_EMQX:-0}" = "1" ] && continue
+                ;;
+        esac
+        skip_services+=("$skip_svc")
+    done
+
+    _middleware_service_is_skipped() {
+        local name="$1" s
+        for s in "${skip_services[@]}"; do
+            [ "$s" = "$name" ] && return 0
+        done
+        return 1
+    }
+
+    # 按服务收集镜像，跳过形态外服务（避免仍拉取 FUXA 等）
+    for svc in $services; do
+        [ -z "$svc" ] && continue
+        if _middleware_service_is_skipped "$svc"; then
+            skipped_images=$((skipped_images + 1))
+            continue
+        fi
+        img="$(_get_service_image_from_compose "$svc")"
+        [ -z "$img" ] && continue
+        if [[ ! " ${images_to_check[*]} " =~ " ${img} " ]]; then
+            images_to_check+=("$img")
+        fi
+    done
+
+    if [ "$skipped_images" -gt 0 ]; then
+        print_info "当前部署形态 (${EASYAIOT_DEPLOY_PROFILE:-full}) 跳过 ${skipped_images} 个中间件服务的镜像拉取"
+    fi
+
+    if [ ${#images_to_check[@]} -eq 0 ]; then
+        print_warning "当前形态无可拉取的中间件镜像"
         return 0
     fi
-    
-    # 提取所有镜像名称（处理多种格式）
-    while IFS= read -r line; do
-        # 匹配 image: 行，支持多种格式
-        if echo "$line" | grep -qE "^\s*image:"; then
-            local image=$(echo "$line" | sed -E 's/^\s*image:\s*//' | sed -E "s/^['\"]//" | sed -E "s/['\"]$//" | tr -d ' ')
-            if [ -n "$image" ] && [[ ! " ${images_to_check[@]} " =~ " ${image} " ]]; then
-                images_to_check+=("$image")
-            fi
-        fi
-    done <<< "$compose_config"
     
     # 检查每个镜像是否存在（记录缺失清单，后面只拉缺失的）
     local missing_list=()
@@ -4304,6 +4372,9 @@ extract_ports_from_compose() {
             "NodeRED")
                 ports=("1880")
                 ;;
+            "FUXA")
+                ports=("1881")
+                ;;
             "EMQX")
                 ports=("1883" "8883" "8083" "8084" "18083")
                 ;;
@@ -4344,6 +4415,7 @@ check_and_clean_ports() {
             "MinIO") container_name="minio-server" ;;
             "SRS") container_name="srs-server" ;;
             "NodeRED") container_name="nodered-server" ;;
+            "FUXA") container_name="fuxa-server" ;;
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
@@ -4931,6 +5003,7 @@ check_and_clean_ports() {
                                     "MinIO") container_name="minio-server" ;;
                                     "SRS") container_name="srs-server" ;;
                                     "NodeRED") container_name="nodered-server" ;;
+                                    "FUXA") container_name="fuxa-server" ;;
                                     "EMQX") container_name="emqx-server" ;;
                                     "ZLMediaKit") container_name="zlmediakit-server" ;;
                                     "Milvus") container_name="milvus-server" ;;
@@ -5053,6 +5126,7 @@ cleanup_stale_containers() {
                 "Milvus") container_names+=("milvus-server") ;;
                 "SRS") container_names+=("srs-server") ;;
                 "NodeRED") container_names+=("nodered-server") ;;
+                "FUXA") container_names+=("fuxa-server") ;;
                 "EMQX") container_names+=("emqx-server") ;;
                 "ZLMediaKit") container_names+=("zlmediakit-server") ;;
             esac
@@ -5060,7 +5134,7 @@ cleanup_stale_containers() {
     done
     
     # 检查是否有停止的容器需要清理
-    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|emqx-server|zlmediakit-server)" || echo "")
+    local stale_containers=$(docker ps -a --filter "status=exited" --format "{{.Names}}" 2>/dev/null | grep -E "(nacos-server|postgres-server|tdengine-server|redis-server|kafka-server|minio-server|milvus-server|srs-server|nodered-server|fuxa-server|emqx-server|zlmediakit-server)" || echo "")
     
     if [ -n "$stale_containers" ]; then
         print_info "发现残留的停止容器，正在清理..."
@@ -5290,6 +5364,7 @@ install_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_fuxa_directories
     prepare_kafka_if_enabled
     
     # 强制更新 SRS 配置文件（重新获取宿主机 IP）
@@ -5348,6 +5423,7 @@ install_middleware() {
             "MinIO") container_name="minio-server" ;;
             "SRS") container_name="srs-server" ;;
             "NodeRED") container_name="nodered-server" ;;
+            "FUXA") container_name="fuxa-server" ;;
             "EMQX") container_name="emqx-server" ;;
             "ZLMediaKit") container_name="zlmediakit-server" ;;
             "Milvus") container_name="milvus-server" ;;
@@ -5488,6 +5564,7 @@ start_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_fuxa_directories
     prepare_kafka_if_enabled
     
     prepare_srs_config
@@ -5602,6 +5679,7 @@ restart_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_fuxa_directories
     prepare_kafka_if_enabled
     
     prepare_srs_config
@@ -5711,7 +5789,7 @@ delete_databases() {
     fi
     
     # 定义需要删除的数据库列表
-    local databases=("iot-ai20" "iot-device20" "iot-video20" "iot-node20" "ruoyi-vue-pro20")
+    local databases=("iot-ai20" "iot-device20" "iot-video20" "iot-node20" "iot-visualize20" "ruoyi-vue-pro20")
     local deleted_count=0
     local total_count=${#databases[@]}
     
@@ -5949,6 +6027,7 @@ update_middleware() {
     create_postgresql_directories
     create_redis_directories
     create_nodered_directories
+    create_fuxa_directories
     prepare_kafka_if_enabled
     
     prepare_srs_config

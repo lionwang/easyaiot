@@ -32,7 +32,7 @@
 #                    - pull:  不指定则交互选择（默认 full）；指定则直接拉取该形态
 #   --arch <arch>    指定构建架构：all | amd64 | arm64（默认 all=全部架构）
 #                    单架构模式仅构建/推送该架构镜像，跳过多架构 manifest 更新
-#   --module <mod>   指定构建模块：all | DEVICE | AI | VIDEO | WEB | APP（默认 all=全部）
+#   --module <mod>   指定构建模块：all | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE（默认 all=全部）
 #                    单模块模式仅构建/推送该模块镜像，跳过全量 install_linux.sh build
 #   --native-source  使用原始源（非国内镜像源），默认使用腾讯云镜像源加速
 #
@@ -58,13 +58,14 @@
 #   共享镜像（全形态通用，pull 时按形态跳过不会启动的 DEVICE 服务）:
 #     docker.cnb.cool/holmesian/easyaiot/aiot-ai:amd64       → ai-service:latest
 #     docker.cnb.cool/holmesian/easyaiot/aiot-video:amd64    → video-service:latest
-#     mini 仅拉 aiot-system；standard 跳过 aiot-device/aiot-tdengine；full 拉全部 DEVICE
+#     mini 仅拉 aiot-system；standard 跳过 aiot-device/aiot-tdengine/aiot-visualize；full 拉全部 DEVICE
 #   形态相关镜像（WEB，全量形态均构建/推送）:
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web:amd64          → web-service:latest          (full)
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web-mini:amd64     → web-service:latest-mini     (mini)
 #     docker.cnb.cool/holmesian/easyaiot/aiot-web-standard:amd64 → web-service:latest-standard (standard)
-#   仅 full 形态（APP 移动端 H5）:
-#     docker.cnb.cool/holmesian/easyaiot/aiot-app:amd64          → app-service:latest
+#   仅 full 形态（APP 移动端 H5 / VISUALIZE 可视化编辑器）:
+#     docker.cnb.cool/holmesian/easyaiot/aiot-app:amd64              → app-service:latest
+#     docker.cnb.cool/holmesian/easyaiot/aiot-visualize-web:amd64    → visualize-service:latest
 #
 # 示例:
 #   bash .scripts/docker/runtime_image.sh build --push
@@ -215,7 +216,7 @@ fi
 if [ -n "${EASYAIOT_RUNTIME_BUILD_MODULE:-}" ]; then
     _bm_norm=$(runtime_normalize_build_module "$EASYAIOT_RUNTIME_BUILD_MODULE")
     if [ "$_bm_norm" = "INVALID" ]; then
-        print_error "无效的目标模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}，可选: all | DEVICE | AI | VIDEO | WEB | APP"
+        print_error "无效的目标模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}，可选: all | DEVICE | AI | VIDEO | WEB | APP | VISUALIZE"
         exit 1
     fi
     if [ -n "$_bm_norm" ]; then
@@ -790,17 +791,20 @@ all_build_plan_images_ready_for_arch() {
         done
     fi
 
-    if runtime_build_includes_module APP; then
+    # 仅 full 形态模块（APP / VISUALIZE）
+    for mapping in "${FULL_ONLY_MODULES[@]}"; do
+        local rname="${mapping%%|*}"
+        local tmp="${mapping#*|}"
+        local lname="${tmp%%|*}"
+        local mod="${mapping##*|}"
+        runtime_build_includes_module "$mod" || continue
         for profile in "${build_profiles[@]}"; do
             if [ "$profile" = "full" ]; then
-                for mapping in "${FULL_ONLY_MODULES[@]}"; do
-                    tmp="${mapping#*|}"; lname="${tmp%%|*}"
-                    local_image_ready "$lname" "" "$target_arch" || return 1
-                done
+                local_image_ready "$lname" "" "$target_arch" || return 1
                 break
             fi
         done
-    fi
+    done
 
     if runtime_build_includes_module DEVICE; then
         for lname in "${DEVICE_LOCAL_NAMES[@]}"; do
@@ -942,6 +946,7 @@ build_single_module() {
         aiot-video) build_module_with_install_script "VIDEO" "video-service" "$local_ref" "$target_arch" ;;
         aiot-web)   build_module_with_install_script "WEB" "web-service" "$local_ref" "$target_arch" ;;
         aiot-app)   build_module_with_install_script "APP" "app-service" "$local_ref" "$target_arch" ;;
+        aiot-visualize-web) build_module_with_install_script "VISUALIZE" "visualize-service" "$local_ref" "$target_arch" ;;
         *)
             # DEVICE 模块：统一由 build_device_all 处理
             build_device_all "$target_arch" || return 1
@@ -1013,14 +1018,17 @@ count_planned_images_for_arch() {
         done
     fi
 
-    if runtime_build_includes_module APP; then
+    # full 专属：APP / VISUALIZE
+    for mapping in "${FULL_ONLY_MODULES[@]}"; do
+        local _fmod="${mapping##*|}"
+        runtime_build_includes_module "$_fmod" || continue
         for _bp in "${profiles[@]}"; do
             if [ "$_bp" = "full" ]; then
                 count=$((count + 1))
                 break
             fi
         done
-    fi
+    done
 
     if runtime_build_includes_module DEVICE; then
         count=$((count + ${#DEVICE_REMOTE_NAMES[@]}))
@@ -1103,7 +1111,7 @@ build_all_modules() {
     if runtime_is_single_module_build; then
         echo "  构建模块: ${EASYAIOT_RUNTIME_BUILD_MODULE}（单模块）"
     else
-        echo "  构建模块: 全部 (DEVICE + AI + VIDEO + WEB + APP)"
+        echo "  构建模块: 全部 (DEVICE + AI + VIDEO + WEB + APP + VISUALIZE)"
     fi
     if runtime_is_single_arch_build; then
         echo "  架构模式: 单架构（跳过多架构 manifest 更新）"
@@ -1238,16 +1246,21 @@ build_all_modules() {
             done
         fi
 
-        # ── APP（仅 full 形态）──
-        if runtime_build_includes_module APP; then
+        # ── full 专属模块（APP / VISUALIZE）──
+        for mapping in "${FULL_ONLY_MODULES[@]}"; do
+            local _frname="${mapping%%|*}"
+            local _ftmp="${mapping#*|}"
+            local _flname="${_ftmp%%|*}"
+            local _fmod="${mapping##*|}"
+            runtime_build_includes_module "$_fmod" || continue
             local _bp
             for _bp in "${build_profiles[@]}"; do
                 if [ "$_bp" = "full" ]; then
-                    _build_push_track "aiot-app" "app-service" "" "$target_arch"
+                    _build_push_track "$_frname" "$_flname" "" "$target_arch"
                     break
                 fi
             done
-        fi
+        done
 
         # ── DEVICE ──
         if runtime_build_includes_module DEVICE; then
