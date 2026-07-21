@@ -569,41 +569,6 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 | ![发布](.image/banner/banner1191.png) | ![运行](.image/banner/banner1192.png) | ![模板](.image/banner/banner1193.png) |
 | ![资产](.image/banner/banner1194.png) | ![大屏](.image/banner/banner1195.png) | ![展示](.image/banner/banner1196.png) |
 
-#### 🤖 AI 视觉
-
-| | | |
-|:---:|:---:|:---:|
-| ![姿态](.image/banner/banner1147.jpg) | ![识别](.image/banner/banner1148.jpg) | ![任务](.image/banner/banner1085.jpg) |
-| ![配置](.image/banner/banner1086.jpg) | ![详情](.image/banner/banner1087.jpg) | ![运行](.image/banner/banner1088.jpg) |
-| ![区域](.image/banner/banner1079.jpg) | ![检测框](.image/banner/banner1080.jpg) | ![布防](.image/banner/banner1081.jpg) |
-| ![预览](.image/banner/banner1082.jpg) | ![算法](.image/banner/banner1062.jpg) | ![创建](.image/banner/banner1063.png) |
-| ![画面](.image/banner/banner1064.jpg) | ![分析](.image/banner/banner1065.jpg) | ![结果](.image/banner/banner1066.jpg) |
-| ![回看](.image/banner/banner1067.jpg) | ![实况](.image/banner/banner1052.jpg) | ![智能](.image/banner/banner1054.jpg) |
-
-#### 🧠 AI模型
-
-| | | |
-|:---:|:---:|:---:|
-| ![Qwen](.image/banner/banner1093.jpg) | ![视觉模型](.image/banner/banner1094.jpg) | ![列表](.image/banner/banner1099.png) |
-| ![配置](.image/banner/banner1100.png) | ![详情](.image/banner/banner1101.png) | ![调用](.image/banner/banner1102.png) |
-| ![训练](.image/banner/banner1019.jpg) | ![任务](.image/banner/banner1020.jpg) | ![列表](.image/banner/banner1023.jpg) |
-| ![进度](.image/banner/banner1024.jpg) | ![参数](.image/banner/banner1017.jpg) | ![评估](.image/banner/banner1018.jpg) |
-| ![详情](.image/banner/banner1021.jpg) | ![日志](.image/banner/banner1022.jpg) | ![管理](.image/banner/banner1097.png) |
-| ![仓库](.image/banner/banner1098.png) | ![版本](.image/banner/banner1039.jpg) | ![资产](.image/banner/banner1061.jpg) |
-| ![推理](.image/banner/banner1040.jpg) | ![配置](.image/banner/banner1042.jpg) | ![结果](.image/banner/banner1043.jpg) |
-| ![在线](.image/banner/banner1044.jpg) | ![批量](.image/banner/banner1047.jpg) | ![监控](.image/banner/banner1048.jpg) |
-| ![服务](.image/banner/banner1045.jpg) | ![部署](.image/banner/banner1046.jpg) | ![集群](.image/banner/banner1049.jpg) |
-| ![调用](.image/banner/banner1050.jpg) | ![权重](.image/banner/banner1111.png) | ![下载](.image/banner/banner1112.png) |
-
-#### 📦 数据集
-
-| | | |
-|:---:|:---:|:---:|
-| ![管理](.image/banner/banner1015.png) | ![列表](.image/banner/banner1010.jpg) | ![标注](.image/banner/banner1027.png) |
-| ![任务](.image/banner/banner1016.jpg) | ![工具](.image/banner/banner1059.jpg) | ![预览](.image/banner/banner1060.jpg) |
-| ![详情](.image/banner/banner1107.png) | ![导入](.image/banner/banner1108.png) | ![项目](.image/banner/banner1109.png) |
-| ![审核](.image/banner/banner1110.png) | ![创建](.image/banner/banner1007.jpg) | ![样本](.image/banner/banner1008.jpg) |
-
 #### 📹 视频监控
 
 | | | |
@@ -619,6 +584,36 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 | ![实况](.image/banner/banner1026.jpg) | ![多路](.image/banner/banner1028.jpg) | ![推流](.image/banner/banner1103.png) |
 | ![预览](.image/banner/banner1104.png) | ![接入](.image/banner/banner1105.png) | ![NVR](.image/banner/banner1106.png) |
 | ![实况](.image/banner/banner1183.jpg) | ![地图](.image/banner/banner1184.jpg) |  |
+
+#### 🧠 AI模型
+
+| | | |
+|:---:|:---:|:---:|
+| ![Qwen](.image/banner/banner1093.jpg) | ![视觉模型](.image/banner/banner1094.jpg) | ![列表](.image/banner/banner1099.png) |
+| ![配置](.image/banner/banner1100.png) | ![详情](.image/banner/banner1101.png) | ![调用](.image/banner/banner1102.png) |
+| ![训练](.image/banner/banner1019.jpg) | ![任务](.image/banner/banner1020.jpg) | ![列表](.image/banner/banner1023.jpg) |
+| ![进度](.image/banner/banner1024.jpg) | ![参数](.image/banner/banner1017.jpg) | ![评估](.image/banner/banner1018.jpg) |
+| ![详情](.image/banner/banner1021.jpg) | ![日志](.image/banner/banner1022.jpg) | ![管理](.image/banner/banner1097.png) |
+| ![仓库](.image/banner/banner1098.png) | ![版本](.image/banner/banner1039.jpg) | ![资产](.image/banner/banner1061.jpg) |
+| ![推理](.image/banner/banner1040.jpg) | ![配置](.image/banner/banner1042.jpg) | ![结果](.image/banner/banner1043.jpg) |
+| ![在线](.image/banner/banner1044.jpg) | ![批量](.image/banner/banner1047.jpg) | ![监控](.image/banner/banner1048.jpg) |
+| ![服务](.image/banner/banner1045.jpg) | ![部署](.image/banner/banner1046.jpg) | ![集群](.image/banner/banner1049.jpg) |
+| ![调用](.image/banner/banner1050.jpg) | ![权重](.image/banner/banner1111.png) | ![下载](.image/banner/banner1112.png) |
+| ![姿态](.image/banner/banner1147.jpg) | ![识别](.image/banner/banner1148.jpg) | ![任务](.image/banner/banner1085.jpg) |
+| ![配置](.image/banner/banner1086.jpg) | ![详情](.image/banner/banner1087.jpg) | ![运行](.image/banner/banner1088.jpg) |
+| ![区域](.image/banner/banner1079.jpg) | ![检测框](.image/banner/banner1080.jpg) | ![布防](.image/banner/banner1081.jpg) |
+| ![预览](.image/banner/banner1082.jpg) | ![算法](.image/banner/banner1062.jpg) | ![创建](.image/banner/banner1063.png) |
+| ![画面](.image/banner/banner1064.jpg) | ![分析](.image/banner/banner1065.jpg) | ![结果](.image/banner/banner1066.jpg) |
+| ![回看](.image/banner/banner1067.jpg) | ![实况](.image/banner/banner1052.jpg) | ![智能](.image/banner/banner1054.jpg) |
+
+#### 📦 数据集
+
+| | | |
+|:---:|:---:|:---:|
+| ![管理](.image/banner/banner1015.png) | ![列表](.image/banner/banner1010.jpg) | ![标注](.image/banner/banner1027.png) |
+| ![任务](.image/banner/banner1016.jpg) | ![工具](.image/banner/banner1059.jpg) | ![预览](.image/banner/banner1060.jpg) |
+| ![详情](.image/banner/banner1107.png) | ![导入](.image/banner/banner1108.png) | ![项目](.image/banner/banner1109.png) |
+| ![审核](.image/banner/banner1110.png) | ![创建](.image/banner/banner1007.jpg) | ![样本](.image/banner/banner1008.jpg) |
 
 #### 🔌 IoT
 
@@ -1218,4 +1213,5 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-<strong>使用许可</strong>：个人与企业可 100% 免费使用，无需保留作者、Copyright 信息。我们相信技术的价值在于被广泛使用和持续创新，而非被版权束缚。希望您能够自由地使用、修改、分发本项目，让 AI 技术真正惠及每一�
+<strong>使用许可</strong>：个人与企业可 100% 免费使用，无需保留作者、Copyright 信息。我们相信技术的价值在于被广泛使用和持续创新，而非被版权束缚。希望您能够自由地使用、修改、分发本项目，让 AI 技术真正惠及每一个人。
+</p>
