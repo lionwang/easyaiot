@@ -615,7 +615,7 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 | ![详情](.image/banner/banner1107.png) | ![导入](.image/banner/banner1108.png) | ![项目](.image/banner/banner1109.png) |
 | ![审核](.image/banner/banner1110.png) | ![创建](.image/banner/banner1007.jpg) | ![样本](.image/banner/banner1008.jpg) |
 
-#### 🔌 IoT
+#### 🔌 物联网
 
 | | | |
 |:---:|:---:|:---:|
@@ -629,14 +629,9 @@ EasyAIoT是一个开源学习项目，与商业行为无关。用户在使用该
 | ![功能](.image/banner/banner1170.jpg) | ![读写](.image/banner/banner1171.jpg) | ![服务](.image/banner/banner1172.jpg) |
 | ![订阅](.image/banner/banner1173.jpg) | ![日志](.image/banner/banner1174.jpg) | ![在线](.image/banner/banner1175.jpg) |
 | ![统计](.image/banner/banner1176.jpg) | ![总览](.image/banner/banner1177.jpg) | ![看板](.image/banner/banner1178.jpg) |
-| ![产品](.image/banner/banner1006.jpg) | ![设备](.image/banner/banner1009.jpg) |  |
-
-#### 🚀 OTA / 规则
-
-| | | |
-|:---:|:---:|:---:|
-| ![OTA](.image/banner/banner1179.jpg) | ![固件](.image/banner/banner1180.jpg) | ![任务](.image/banner/banner1181.jpg) |
-| ![进度](.image/banner/banner1182.jpg) | ![规则](.image/banner/banner1013.jpg) | ![编排](.image/banner/banner1014.png) |
+| ![产品](.image/banner/banner1006.jpg) | ![设备](.image/banner/banner1009.jpg) | ![OTA](.image/banner/banner1179.jpg) |
+| ![固件](.image/banner/banner1180.jpg) | ![任务](.image/banner/banner1181.jpg) | ![进度](.image/banner/banner1182.jpg) |
+| ![规则](.image/banner/banner1013.jpg) | ![编排](.image/banner/banner1014.png) |  |
 
 #### 🖥️ 集群
 

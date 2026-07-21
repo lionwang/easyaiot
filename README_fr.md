@@ -1,4 +1,4 @@
-# EasyAIoT (Plateforme d'Application d'Algorithmes Intelligents à Intégration Cloud-Bord-Périphérique)
+# EasyAIoT (Plateforme d'application d'algorithmes intelligents intégrée cloud-bord-périphérie)
 
 [![Gitee star](https://gitee.com/volara/easyaiot/badge/star.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/stargazers)
 [![Gitee fork](https://gitee.com/volara/easyaiot/badge/fork.svg?theme=gvp)](https://gitee.com/soaring-xiongkulu/easyaiot/members)
@@ -36,7 +36,7 @@ De nombreux projets IoT intelligents se heurtent au même obstacle lors du dépl
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-La plateforme comprend huit modules principaux — <strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK et EDGE</strong> — avec Java comme socle de contrôle stable, Python pour l'IA et le réseau, et C++ pour les tâches de calcul haute performance, chaque langage exploitant ses forces. Côté capacités : accès caméra multi-protocoles GB28181 / ONVIF, <strong>accès vue aérienne dock/drone DJI</strong>, tâches algorithmiques temps réel et par capture, détection d'objets YOLO et annotation automatique SAM zero-shot, reconnaissance faciale/plaques, post-traitement métier orchestrable, planification de clusters de calcul fédérés, et <strong>mode cluster edge fédéré illimité</strong> (environ <strong>512 Mo</strong> de mémoire, occupation disque locale nulle côté edge sur Ceph — alertes et objets métier sur Ceph partagé, pas de disque métier local ; une seule commande rend une carte de développement ordinaire intelligente, compute déployable en extension sur site avec agrégation vers le cloud), ainsi que la gestion du cycle de vie des appareils IoT MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA. Côté expérience : la console Web et l'App mobile / mini-programme sont alignées en capacités — centres de commande et inspections terrain partagent la même logique métier, partout et à tout moment.
+La plateforme comprend <strong>WEB, APP, DEVICE, NODE, VIDEO, AI, TASK, EDGE et VISUALIZE</strong> — neuf modules principaux — avec Java comme socle de contrôle stable, Python pour l'IA et le réseau, et C++ pour les tâches de calcul haute performance, chaque langage exploitant ses forces. Côté capacités : accès caméra multi-protocoles GB28181 / ONVIF, <strong>accès vue aérienne dock/drone DJI</strong>, tâches algorithmiques temps réel et par capture, détection d'objets YOLO et annotation automatique SAM zero-shot, reconnaissance faciale/plaques, post-traitement métier orchestrable, planification de clusters de calcul fédérés, et <strong>mode cluster edge fédéré illimité</strong> (cartes de développement ordinaires prêtes à l'emploi, décision intelligente sur site, alertes et preuves agrégées automatiquement vers le cloud, puissance de calcul déployable selon les besoins), ainsi que la gestion du cycle de vie des appareils IoT MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA, et <strong>grands écrans de visualisation et SCADA Web</strong>, pour que les données des appareils alimentent à la fois la situation de commandement et les synoptiques de processus. Côté expérience : la console Web et l'App mobile / mini-programme sont alignées en capacités — centres de commande et inspections terrain partagent la même logique métier, partout et à tout moment.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 16px 0 8px 0;">
@@ -93,8 +93,8 @@ Beaucoup de projets IoT intelligents butent au déploiement : <strong>les foncti
 <div style="margin: 20px 0; padding: 18px 22px; border-radius: 10px; border: 1px solid rgba(52, 152, 219, 0.25); background: linear-gradient(120deg, #f0f7ff 0%, #ffffff 55%, #eef9f4 100%);">
   <p style="font-size: 16px; font-weight: 700; color: #1a5276; margin: 0 0 8px 0;">🚀 Mode cluster edge fédéré illimité EasyAIoT</p>
   <p style="font-size: 14px; line-height: 1.8; color: #333; margin: 0;">
-    Environ <strong>512 Mo</strong> de mémoire, <strong>occupation disque locale nulle côté edge sur Ceph</strong> (images d'alerte et objets métier écrits sur Ceph partagé, pas de disque métier local en edge) ; le compute peut être déployé en extension sur chaque site ; <strong>une seule commande</strong> suffit pour rendre intelligente une carte de développement ordinaire, tandis que les alertes et événements remontent vers le cloud.
-    Complémentaire aux trois niveaux full-stack ci-dessus — le full-stack assure le contrôle cloud-edge et l'orchestration métier, les nœuds EDGE assurent l'inférence légère sur site et l'extension horizontale illimitée : « un contrôle central, un déploiement edge à volonté ».
+    Déplacer l'intelligence du datacenter vers le terrain : les cartes de développement ordinaires et les boîtiers edge peuvent effectuer la perception et l'analyse sur place, tandis que les alertes, les preuves et la situation remontent automatiquement vers le centre — sans empiler de lourdes infrastructures à chaque site.
+    Lors de l'expansion métier, ajoutez des nœuds au fil des points ; le centre orchestre de manière unifiée, l'edge veille de façon autonome — pour que la « puissance de calcul suive l'activité et l'intelligence s'adapte aux scénarios ».
   </p>
 </div>
 
@@ -117,7 +117,7 @@ Beaucoup de projets IoT intelligents butent au déploiement : <strong>les foncti
   <li><strong>Cluster fédéré multi-nœuds centraux × multi-nœuds de travail</strong> : Conçu pour les déploiements inter-régionaux, multi-salles et cloud-bord, la plateforme adopte une architecture fédérée « N nœuds centraux + N nœuds de travail » — les nœuds centraux servent de plan de contrôle unifié et les nœuds de travail d'exécution calcul et média, formant un système de planification distribué horizontalement évolutif. Chaque nœud central gère son cluster de nœuds de travail, avec distribution d'exécution et déploiement distant en un clic des agents de surveillance, stockage distribué, moteurs de streaming, transcodage audio-vidéo, runtime d'analyse vidéo, inférence et entraînement de modèles ; plusieurs nœuds centraux peuvent s'interconnecter et se synchroniser. La vue en couloirs du cluster présente intuitivement la topologie « central — travail » et les niveaux de ressources, avec maintenance et distribution de composants par lot au niveau du couloir. Tâches algorithmiques, pipelines d'annotation automatique et relais de flux sont planifiés intelligemment selon le rôle des nœuds et les capacités GPU, avec files d'attente élastiques — ingestion massive de flux, inférence à haute concurrence et entraînement distribué coexistent dans un même cluster : « intégration fluide, planification claire, extension ouverte, gouvernance complète »</li>
   <li><strong>Pipeline d'orchestration d'annotation automatique SAM à démarrage zéro</strong> : Conçu pour les scénarios de démarrage à froid sans échantillons annotés ni modèle de détection utilisable, la plateforme intègre la segmentation SAM à vocabulaire ouvert et un moteur d'orchestration intelligent pour offrir un pipeline d'annotation sans surveillance en un clic. Selon la stratégie configurée, le système enchaîne automatiquement l'extraction d'images depuis les caméras, l'annotation initiale SAM par invites textuelles, le fine-tuning YOLO déclenché une fois les seuils atteints, l'inférence YOLO à haute vitesse en phase de production avec bascule intelligente vers SAM pour les détections manquées, l'entraînement itératif périodique et l'export automatique des jeux de données — bouclant la chaîne complète « capture — annotation — entraînement — export ». Le hub d'orchestration suit en temps réel la phase du pipeline et la progression de l'annotation, décide de manière autonome entre les modes SAM, YOLO et complément hybride, et détermine le moment de déclencher l'entraînement ; prend en charge la pause/reprise et la planification élastique sur files locales ou cluster. Avec configuration visuelle des stratégies et journaux d'exécution, les utilisateurs peuvent faire émerger une capacité de détection sur mesure à partir de zéro échantillon et zéro modèle — « définir les catégories en mots, laisser le modèle se construire » devient le chemin par défaut pour constituer des jeux de données</li>
   <li><strong>Cluster de calcul élastique à dizaines de milliers de nœuds et pool d'extension horizontale</strong> : Conçu pour les charges de travail IA et vidéo à très grande échelle, la plateforme constitue une base de calcul distribuée cloud-bord-périphérique qui regroupe tâches algorithmiques, relais de flux, services algorithmiques, entraînement et inférence de modèles dans un même cadre d'équilibrage de charge horizontal et d'élasticité. Chaque nouveau serveur intégré en un clic rejoint immédiatement le pool de calcul programmable ; le planificateur répartit automatiquement les tâches selon les niveaux de ressources et la pression métier, permettant une montée en charge linéaire — de quelques centaines à des dizaines de milliers de caméras, d'une machine unique à un cluster de dizaines de milliers de nœuds — sans redéploiement ni réglage manuel. Ingestion massive de flux, inférence à haute concurrence et entraînement distribué coexistent dans un même pool : « extension à la demande, exécution stable, gouvernance maîtrisée »</li>
-  <li><strong>Mode cluster edge fédéré illimité (EDGE)</strong> : Destiné aux cartes de développement ordinaires comme RK3588, Raspberry Pi et autres nœuds de calcul sur site, offre un runtime algorithmique edge léger sans interface, d'environ <strong>512 Mo</strong> de mémoire — <strong>une seule commande</strong> pour renseigner l'adresse du plan de contrôle et démarrer, rendant directement intelligente une carte de développement ordinaire ; le compute peut se déployer en extension sur chaque point, tandis que les alertes et événements remontent vers le cloud ; images d'alerte et captures écrites sur Ceph partagé, archivées par le sink central, <strong>0 occupation disque métier côté edge</strong> (pas de disque métier local, pas d'upload MinIO direct). Le plan d'exécution est extrait du plan de contrôle VIDEO vers un module <code>EDGE</code> indépendant : sans WEB, sans base métier locale, concentré sur « recevoir les commandes, exécuter l'inférence, renvoyer les événements ». Sur site, une seule configuration <code>EDGE_NODE_URL</code> ; via enroll / runtime-config, réception automatique des adresses du cluster EMQX, identifiants MQTT, chemins de tampon chaud Ceph et contrats Topic ; un nombre illimité de nœuds partagent le même bus EMQX, le plan de contrôle planifiant les tâches realtime / snapshot / patrol selon les capacités ; démarrage/arrêt via <code>mqtt/iot-algo-task-cmd</code>, heartbeat, ack, alertes et post-traitement remontant sur le même bus — vraiment « 512 Mo au départ, Ceph edge 0 disque, une commande pour déployer, expansion fédérée illimitée, intelligence sur site et agrégation cloud en un »</li>
+  <li><strong>Mode cluster edge fédéré illimité</strong> : Conçu pour les déploiements à large couverture, les sites à réseau faible et l'extension par phases — l'analyse intelligente se déploie au plus près de l'activité ; cartes de développement ordinaires et nœuds edge deviennent des unités de veille prêtes à entrer en service à tout moment. Le centre distribue tâches et politiques ; le terrain effectue perception et analyse localement ; alertes et preuves remontent automatiquement. À l'expansion, ajoutez des nœuds pour étendre linéairement le rayon de couverture — « un point de plus, une zone de plus ; une voie de plus, une garantie de plus » — pour que la puissance de calcul suive les scénarios et l'intelligence suive l'activité</li>
   <li><strong>Visualisation spatiale Tianditu et analyse sur carte</strong> : Intégration avec la carte nationale chinoise Tianditu pour rassembler caméras, alertes et reconnaissance personnes/véhicules sur une seule carte, faisant passer la surveillance de « regarder les flux » à « voir l'ensemble ». Les modules média en streaming et alertes proposent une vue « Distribution cartographique » avec arborescence des appareils pour un focus régional, offrant une visibilité immédiate sur la disposition des points de contrôle et l'état en ligne. Clic sur carte, recherche de lieu et import par lot de coordonnées permettent de géolocaliser rapidement les canaux GB, NVR et caméras directes, afin que chaque flux ait un contexte spatial clair. Les alertes sont automatiquement positionnées via les coordonnées des caméras ; filtres par heure, type d'événement, tâche et étiquettes métier, avec accès aux captures et enregistrements en un clic — pour passer rapidement de « où cela s'est-il produit » à l'action. Combiné aux bibliothèques faciales et de plaques, les correspondances sur plusieurs sites forment des fils spatiaux — <strong>recherche de traces par personne</strong> pour reconstituer trajets et présence dans la zone surveillée ; <strong>recherche de traces par véhicule</strong> pour relier les passages et localiser itinéraires et zones d'arrêt, pour retrouver personnes/véhicules, déployer la patrouille et analyser après incident. Les appareils mobiles supportent aussi la relecture de trajectoires sur une frise chronologique. Basculement libre entre fond vectoriel et imagerie satellite avec ajustement automatique de la vue, pour que les responsables utilisent la carte comme levier de détection, ciblage et coordination</li>
   <li><strong>Déploiement multi-GPU Qwen / DeepSeek</strong> : Prend en charge le déploiement de grands modèles de langage tels que Qwen et DeepSeek en parallèle sur plusieurs GPU. Les ressources GPU peuvent être planifiées de manière flexible au niveau du cluster et des Workers, permettant la mise à l'échelle élastique et l'équilibrage de charge des instances de modèles pour fournir une inférence stable en cas de forte concurrence et de contextes longs</li>
   <li><strong>Compréhension intelligente des grands modèles visuels</strong> : Intégré avec le grand modèle visuel QwenVL3, prend en charge le raisonnement visuel profond et la compréhension sémantique des images vidéo en temps réel, capable d'effectuer une analyse intelligente et une compréhension de scène du contenu des images, fournissant des capacités cognitives visuelles plus riches, réalisant un saut de la perception au niveau des pixels à la compréhension au niveau sémantique</li>
@@ -161,10 +161,17 @@ Beaucoup de projets IoT intelligents butent au déploiement : <strong>les foncti
 #### 🌐 Capacités IoT
 
 <p style="font-size: 14px; line-height: 1.8; color: #444; margin: 12px 0 8px 0;">
-Beaucoup de projets réduisent l'IoT à un « registre d'appareils + relais de messages » : on se connecte, mais on ne gère pas ; on remonte des données, mais on ne pousse rien ; on alerte, mais on ne voit pas le terrain. EasyAIoT positionne l'IoT comme le nerf d'exécution de la boucle <strong>perception — compréhension — décision — exécution</strong> : capteurs et actionneurs fournissent les « chiffres », caméras et IA fournissent les « images », règles et ombres les tressent en actions métier opérables — pour que la plateforme ne se contente pas de « voir », mais sache aussi « gouverner, piloter juste et scaler ».
+Beaucoup de projets réduisent l'IoT à un « registre d'appareils + relais de messages » : on se connecte, mais on ne gouverne pas ; on remonte des données, mais on ne déclenche rien ; on alerte, mais on ne voit pas le terrain ; on a des chiffres, mais pas d'écran ni de synoptique de processus. EasyAIoT positionne l'IoT comme le nerf d'exécution de la boucle <strong>perception — compréhension — décision — exécution</strong> : capteurs et actionneurs fournissent les « chiffres », caméras et IA fournissent les « images », grands écrans de visualisation et SCADA Web transforment les « chiffres » en situation de commandement, règles et ombres tressent le tout en actions métier opérables — pour que la plateforme ne se contente pas de « voir », mais sache aussi « afficher en écran, comprendre le processus, gouverner, piloter juste et scaler ».
 </p>
 
 <ul style="font-size: 14px; line-height: 1.8; color: #444; margin: 10px 0;">
+  <li><strong>Gestion de la visualisation</strong> : Si points de mesure, alertes et indicateurs métier restent dans des listes et des messages, la direction ne voit pas l'ensemble, la garde ne lit pas clairement et les rapports exigent encore des PPT — la valeur des données reste bloquée à « on collecte mais on n'affiche pas ». La plateforme regroupe projets de visualisation, centre de modèles, bibliothèque de ressources, sources de données et déploiement de services : glisser-déposer des données IoT pour composer des grands écrans opérables de situation de campus, KPI de ligne, exploitation d'équipements, etc. ; brouillon modifiable, version mature publiable, publication diffusable — l'IoT passe de « des chiffres en coulisse » à « un écran en façade », sans outil de grand écran externe pour le commandement et la présentation</li>
+  <li><strong>Cycle de vie complet des projets de visualisation</strong> : Si les grands écrans vivent sur des PC personnels et des liens temporaires, les passations se désorganisent, les versions se perdent et la mise en production devient conflictuelle. La plateforme gère de bout en bout la création, l'édition, l'aperçu, la publication et la mise hors ligne ; vues tableau/carte pour inventorier ; publiés et non publiés distinguables d'un coup d'œil — qui travaille, où en est-on, peut-on projeter : état de projet traçable, transmissible et acceptable ; « faire un écran » devient un actif de livraison opérable</li>
+  <li><strong>Centre de modèles de visualisation</strong> : Repartir d'une toile vierge à chaque projet allonge forcément délais de conception et d'intégration. Des modèles matures — vue d'ensemble de campus, situation d'usine, tableau de bord d'équipements — se capitalisent et se réutilisent ; nouveau projet en un clic puis ajustements — moins de dessin from scratch pour des scénarios similaires, PoC et copies multi-projets plus rapides et homogènes ; « savoir le faire une fois » devient « livrer plusieurs fois »</li>
+  <li><strong>Gouvernance des ressources et sources de données de visualisation</strong> : Icônes, fonds et vidéos cachés par projet, interfaces de données réécrites écran par écran — styles incohérents et champs qui ne correspondent plus. Bibliothèque centralisée d'actifs visuels réutilisables ; sources de données raccordées uniformément aux appareils et interfaces métier — même style, même définition de champs pour plusieurs grands écrans ; modifier une fois profite à plusieurs, moins de construction en double et de disputes sur les définitions</li>
+  <li><strong>Publication de visualisation et déploiement de services</strong> : Un grand écran terminé mais non diffusable reste inutile. Après validation, associer un déploiement de service et diffuser selon le scénario — centre de commandement, salle de garde ou vitrine externe ; aperçu et diffusion officielle sur le même projet — passage explicite de « mode édition » à « mode garde » ; acceptation et astreinte quotidienne sans liens temporaires ni accords verbaux</li>
+  <li><strong>Gestion SCADA</strong> : Sur le terrain industriel et tertiaire, la crainte est « plein de valeurs, processus illisible » — compteurs, vannes, niveaux de cuve ont des lectures, mais la garde ne les relie ni aux conduites ni aux étapes ; les anomalies se devinent à l'oral et à l'expérience. La plateforme propose du SCADA Web : points de mesure liés à des synoptiques de processus — vue générale d'usine d'eau, tableau de ligne, réseau d'usine, surveillance électrique de salle de distribution ; édition et aperçu au même endroit, publication prête pour la garde — les « chiffres » retournent sur le « schéma », l'état du processus se lit d'un coup d'œil ; la garde passe de feuilleter des tableaux à juger et agir sur le synoptique</li>
+  <li><strong>Surveillance et contrôle limité en temps réel sur synoptique SCADA</strong> : Une liste seule « voit les points, pas le flux » — localisation lente, passation difficile, formation au petit bonheur. L'exécution SCADA anime cuves, vannes, moteurs et interrupteurs ; tendances et états se rafraîchissent sur le même écran ; démarrage/arrêt, reset, etc. depuis le synoptique si besoin — les nouveaux prennent en main plus vite, l'équipe suivante voit la même image ; l'anomalie passe de « trouver le point » à « lire le processus » — le terrain industriel entre vraiment dans une exploitation quotidienne surveillable, transmissible et extensible</li>
   <li><strong>Gestion des modèles de produit</strong> : Le coût le plus élevé de l'IoT n'est souvent pas l'achat d'appareils, mais de reconfigurer une fiche à chaque nouvelle classe. La plateforme prend le produit comme modèle pour des appareils similaires — création, activation/arrêt, recherche et vues tableau/carte ; scénario, fabricant et modèle se configurent une fois — l'extension réutilise ensuite le modèle produit sans tout remplir appareil par appareil ; une fiche pour une classe, réutilisable à grande échelle, transforme le coût d'accès d'une croissance linéaire en actif reproductible</li>
   <li><strong>Modélisation multi-types de produits</strong> : Quand coexistent terminaux directs, passerelles edge, sous-appareils de passerelle et appareils vidéo, forcer un seul chemin d'accès brouille la topologie et casse les protocoles. La plateforme crée des produits selon quatre formes — connexion directe, passerelle, sous-appareil de passerelle et vidéo — chaque morphologie garde son propre chemin — topologie non mélangée, protocoles non mal câblés, squelette produit correct pour une gouvernance à l'échelle</li>
   <li><strong>Protocole d'accès et authentification au niveau produit</strong> : Negocier protocole et auth appareil par appareil est le foyer des retouches d'intégration. Au niveau produit, on fige une fois protocole (MQTT / TCP / HTTP / Modbus-TCP / Modbus-RTU / OPC UA), format de données, mode d'authentification et stratégie de chiffrement/déchiffrement ; les appareils enfants héritent automatiquement du même contrat — plus d'accords auth/format au cas par cas ; la norme d'accès passe du « oral transmis » au « contrat héritables au niveau produit »</li>
@@ -278,7 +285,7 @@ En s'appuyant de manière innovante sur les grands modèles, nous construisons u
 ### 🏗️ Caractéristiques de l'architecture du projet
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-EasyAIoT n'est pas vraiment un seul projet, mais huit projets distincts.
+EasyAIoT n'est pas vraiment un seul projet, mais neuf projets distincts.
 </p>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
@@ -315,10 +322,10 @@ EasyAIoT répond activement à la stratégie de localisation, prenant pleinement
 <div style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 10px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 <h4 style="margin-top: 0; color: white; font-size: 18px;">📱 Support côté edge (périphérie)</h4>
 <ul style="font-size: 14px; line-height: 1.8; margin: 10px 0; padding-left: 20px;">
-  <li>Mode cluster edge fédéré illimité : environ 512 Mo de mémoire suffisent pour rejoindre le cluster</li>
-  <li>Occupation disque locale nulle côté edge sur Ceph — les objets métier ne sont pas stockés sur disque local</li>
-  <li>Une seule commande rend intelligente une carte de développement ordinaire comme le RK3588</li>
-  <li>Compute déployable en extension sur chaque point, alertes et événements agrégés vers le cloud</li>
+  <li>Les cartes de développement ordinaires peuvent assurer la veille intelligente sur site</li>
+  <li>Déploiement léger sur le terrain, sans empiler de lourds stockages à chaque site</li>
+  <li>Intelligence prête à l'emploi, cycle de mise en service edge raccourci</li>
+  <li>Puissance de calcul déployée point par point, alertes et preuves agrégées automatiquement vers le cloud</li>
 </ul>
 </div>
 
@@ -341,7 +348,7 @@ EasyAIoT répond activement à la stratégie de localisation, prenant pleinement
 ## 🧩 Structure du projet
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-EasyAIoT est composé de huit projets principaux :
+EasyAIoT est composé de neuf projets principaux :
 </p>
 
 <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -380,6 +387,7 @@ EasyAIoT est composé de huit projets principaux :
     <li><strong>Moteur de règles</strong> : Règles de flux de données, routage des messages, transformation des données.</li>
     <li><strong>Collecte de données</strong> : Collecte, stockage, requête et analyse des données des appareils.</li>
     <li><strong>Plan de contrôle des nœuds</strong> : Microservice <code>iot-node</code> intégré offrant un plan de contrôle unifié pour le CRUD des nœuds de calcul/média, les tests de connectivité SSH, l'enregistrement et le heartbeat des Agents, l'ordonnancement des charges de travail et l'allocation du pool de nœuds média.</li>
+    <li><strong>Backend de visualisation</strong> : Microservice <code>iot-visualize</code> intégré (base <code>iot-visualize20</code>), gestion unifiée des projets grands écrans/SCADA, modèles, ressources, sources de données et déploiements de services — métadonnées de projet et capacités de publication pour l'éditeur VISUALIZE et le SCADA FUXA.</li>
   </ul>
 </td>
 </tr>
@@ -426,20 +434,30 @@ EasyAIoT est composé de huit projets principaux :
 <td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module EDGE</strong></td>
 <td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
   <ul style="margin: 5px 0; padding-left: 20px;">
-    <li><strong>Mode cluster edge fédéré illimité</strong> : Huitième module principal, environ 512 Mo de mémoire ; occupation disque locale nulle côté edge sur Ceph ; une seule commande rend intelligente une carte de développement ordinaire, compute déployable en extension sur site avec agrégation vers le cloud, support de l'expansion fédérée illimitée</li>
-    <li><strong>Runtime algorithmique edge sans interface</strong> : Plan d'exécution algorithmique extrait de VIDEO ; CLI / systemd uniquement, sans WEB ni base métier locale, centré sur l'inférence edge et le retour d'événements</li>
-    <li><strong>Point de configuration unique</strong> : Sur site, configurer uniquement <code>EDGE_NODE_URL</code> (adresse du plan de contrôle iot-node) ; via <code>/admin-api/node/edge/enroll</code> et <code>runtime-config</code>, réception automatique de la liste des brokers MQTT, identifiants locataire, clientId, chemins de tampon chaud Ceph et contrats Topic algorithmiques</li>
-    <li><strong>Bus MQTT de bout en bout</strong> : Abonnement à <code>mqtt/iot-algo-task-cmd</code> pour les commandes démarrage/arrêt (filtrées par <code>targetNodeId</code>), publication de heartbeat / ack / alertes / post-traitement ; pas de Kafka direct ni de plan de gestion HTTP</li>
-    <li><strong>Occupation disque locale nulle côté edge sur Ceph</strong> : Images d'alerte et captures écrites sur chemins Ceph partagés ; le <code>iot-sink</code> central archive vers MinIO — pas de disque métier local en edge, EDGE n'a pas de responsabilité d'upload synchrone MinIO</li>
-    <li><strong>Extension de cluster illimitée</strong> : Un nombre quelconque de nœuds EDGE rejoignent le même cluster EMQX ; sonde ordonnée des brokers avec reprise en tête de liste en cas de panne ; extension horizontale des tâches realtime / snapshot / patrol</li>
-    <li><strong>Répartition claire avec le plan de contrôle</strong> : VIDEO conserve le CRUD des tâches, la politique de planification et la consultation des journaux ; EDGE prend en charge les boucles d'inférence <code>runtime/</code> et le lancement des workloads, et peut coexister avec l'Agent NODE (workloads HTTP génériques)</li>
+    <li><strong>Mode cluster edge fédéré illimité</strong> : Huitième module principal — étend l'intelligence du centre vers le terrain ; cartes de développement ordinaires et nœuds edge rejoignent le réseau de veille à tout moment ; puissance de calcul déployée selon l'activité ; alertes et preuves agrégées vers le cloud</li>
+    <li><strong>Veille légère sur site</strong> : Perception et analyse locales avec remontée — sans interface lourde ni système métier local, réduisant le seuil de déploiement edge et la charge d'exploitation</li>
+    <li><strong>Accès prêt à l'emploi, gouvernance unifiée</strong> : Les nœuds terrain rejoignent rapidement le centre qui orchestre tâches et politiques — moins de configuration manuelle et de déploiement point par point</li>
+    <li><strong>Extension métier transparente</strong> : Le centre voit l'ensemble et fixe les règles ; l'edge surveille le terrain et réagit vite ; le nombre de nœuds grandit avec la couverture — analyse temps réel, patrouille et capture à l'échelle</li>
+    <li><strong>Déploiement allégé</strong> : L'edge se concentre sur « exécuter » plutôt qu'« empiler du matériel » — des déploiements à large couverture plus faciles à livrer et à reproduire</li>
+  </ul>
+</td>
+</tr>
+<tr>
+<td style="padding: 15px; border: 1px solid #e0e0e0; vertical-align: top;"><strong>Module VISUALIZE</strong></td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; line-height: 1.8; color: #444;">
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li><strong>Éditeur de grands écrans glisser-déposer</strong> : Neuvième module principal — éditeur de visualisation low-code haute performance basé sur GoView, centré sur l'édition et l'aperçu du canevas, sans connexion ni gestion de projet autonomes</li>
+    <li><strong>Intégration avec WEB</strong> : Création de projet, modèles, ressources, sources de données, publication et diffusion dans le menu « Visualisation » de la console ; « Ouvrir l'éditeur » bascule vers ce module (par défaut <code>:8002</code>) avec Token pour entrer dans le canevas</li>
+    <li><strong>Livraison de grands écrans</strong> : Graphiques, indicateurs et mise en page par glisser-déposer ; composants raccordables aux sources de données plateforme et points IoT — situation de campus, KPI de ligne, exploitation d'équipements, énergie, etc.</li>
+    <li><strong>Complémentarité avec le SCADA</strong> : Grands écrans (dashboard) via ce module ; synoptiques de processus (scada) via FUXA Web ; métadonnées de projet unifiées sous DEVICE <code>iot-visualize</code></li>
+    <li><strong>Forme de déploiement</strong> : Capacité full comme APP ; mini / standard peuvent être omis selon le matériel terrain pour alléger le déploiement edge</li>
   </ul>
 </td>
 </tr>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #555; margin: 15px 0;">
-Pour une analyse approfondie de la pile technologique de chaque module, de la décomposition en microservices, de la topologie des middlewares et des flux de données, consultez <a href=".doc/架构设计/项目架构设计分析_fr.md" style="color: #3498db; text-decoration: none; font-weight: 600;">Analyse de l'architecture du projet</a>.
+Pour une analyse approfondie de la pile technologique de chaque module, de la décomposition en microservices, de la topologie des middlewares et des flux de données, consultez <a href=".doc/架构设计/项目架构设计分析.md" style="color: #3498db; text-decoration: none; font-weight: 600;">Analyse de conception de l'architecture du projet</a>.
 </p>
 
 ## 🖥️ Avantages du déploiement multiplateforme
@@ -513,8 +531,8 @@ EasyAIoT est un projet d'apprentissage open source, sans lien avec des activité
 
 ## 📚 Documentation de déploiement
 
-- [Documentation de déploiement de la plateforme](.doc/部署文档/平台部署文档_fr.md) — Guide de déploiement étape par étape pour Linux / Mac / Windows
-- [Bonnes pratiques de déploiement](.doc/部署文档/部署最佳实践_fr.md) — Exigences d'environnement, déploiement en un clic, dépannage et recommandations pour la production
+- [Documentation de déploiement de la plateforme](.doc/部署文档/平台部署文档_zh.md) — Guide de déploiement étape par étape pour Linux / Mac / Windows
+- [Bonnes pratiques de déploiement](.doc/部署文档/部署最佳实践.md) — Exigences d'environnement, déploiement en un clic, dépannage et recommandations pour la production
 
 ## 🎮 Environnement de démonstration
 
@@ -528,391 +546,135 @@ EasyAIoT est un projet d'apprentissage open source, sans lien avec des activité
 - Github: https://github.com/soaring-xiongkulu/easyaiot
 
 ## 📸 Captures d'écran
+
 <div>
-  <img src=".image/banner/banner-video1000.gif" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner-video1001.gif" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1143.jpg" alt="Paramètres d'identité de la plateforme" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1144.jpg" alt="Réinitialisation de l'identité de la plateforme" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1001.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1076.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1074.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1075.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1095.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1096.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1127.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1128.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1145.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1146.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1147.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1148.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1129.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1130.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1131.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1132.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1133.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1134.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1135.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1136.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1093.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1094.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1085.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1086.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1087.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1088.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1089.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1090.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1078.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1077.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1079.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1080.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1081.jpg" alt="Screenshot 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1082.jpg" alt="Screenshot 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1006.jpg" alt="Capture d'écran 3" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1009.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1051.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1053.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1062.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1063.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1064.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1065.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1066.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1067.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1052.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1054.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1083.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1084.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1121.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1122.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1123.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1124.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1125.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1126.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1117.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1118.png" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1119.png" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1120.png" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1057.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1058.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1068.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1069.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1026.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1028.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1029.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1030.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1072.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1031.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1070.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1071.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1033.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1035.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1034.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1036.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1037.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1038.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1015.png" alt="Capture d'écran 5" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1010.jpg" alt="Capture d'écran 3" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1027.png" alt="Capture d'écran 2" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1016.jpg" alt="Capture d'écran 6" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1059.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1060.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1107.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1108.png" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1111.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1112.png" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1109.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1110.png" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1007.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1008.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1103.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1104.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1105.png" alt="Screenshot 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1106.png" alt="Screenshot 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1019.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1020.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1099.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1100.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1101.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1102.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1023.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1024.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1017.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1018.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1097.png" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1098.png" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1039.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1061.jpg" alt="Capture d'écran 7" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1040.jpg" alt="Capture d'écran 8" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1042.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1043.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1044.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1021.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1022.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1045.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1046.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1047.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1048.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1049.jpg" alt="Capture d'écran 7" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1050.jpg" alt="Capture d'écran 8" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1013.jpg" alt="Capture d'écran 9" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1014.png" alt="Capture d'écran 10" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1003.png" alt="Capture d'écran 13" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1004.png" alt="Capture d'écran 14" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1005.png" alt="Capture d'écran 15" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1002.png" alt="Capture d'écran 16" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1149.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1150.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1151.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1152.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1153.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1154.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1155.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1156.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1157.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1158.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1159.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1160.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1161.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1162.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1163.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1164.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1165.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1166.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1167.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1168.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1169.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1170.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1171.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1172.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1173.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1174.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1175.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1176.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1177.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1178.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1179.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1180.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1181.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1182.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/banner1183.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/banner1184.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1000.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1001.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1002.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1003.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1004.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1005.jpg" alt="Capture d'écran 1" width="49%">
-</div>
-<div>
-  <img src=".image/banner/app/app_1006.jpg" alt="Capture d'écran 1" width="49%" style="margin-right: 10px">
-  <img src=".image/banner/app/app_1007.jpg" alt="Capture d'écran 1" width="49%">
+  <img src=".image/banner/banner-video1000.gif" alt="Démo" width="49%" style="margin-right: 10px">
+  <img src=".image/banner/banner-video1001.gif" alt="Démo" width="49%">
 </div>
 
-## 🛠️ Support de service
+#### 🖥️ Grand écran de surveillance
 
-<p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-Nous offrons diverses méthodes de service pour vous aider à mieux comprendre la plateforme EasyAIoT et son code. Grâce à la documentation produit, aux groupes d'échange technique, à l'enseignement payant, etc., vous bénéficierez des services suivants :
-</p>
+| | | |
+|:---:|:---:|:---:|
+| ![Situation](.image/banner/banner1001.png) | ![Vue d'ensemble](.image/banner/banner1076.jpg) | ![Alerte](.image/banner/banner1074.jpg) |
+| ![Tableau de bord](.image/banner/banner1075.jpg) | ![Multidimensionnel](.image/banner/banner1095.jpg) | ![Synthèse](.image/banner/banner1096.jpg) |
+| ![Surveillance](.image/banner/banner1078.jpg) | ![Temps réel](.image/banner/banner1077.jpg) |  |
 
-<table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin: 20px 0; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-<thead>
-<tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-<th style="padding: 15px; text-align: left; font-weight: 600;">Élément de service</th>
-<th style="padding: 15px; text-align: left; font-weight: 600;">Contenu du service</th>
-<th style="padding: 15px; text-align: center; font-weight: 600;">Tarification du service</th>
-<th style="padding: 15px; text-align: left; font-weight: 600;">Méthode de service</th>
-</tr>
-</thead>
-<tbody>
-<tr style="background-color: #f8f9fa;">
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">Déploiement du système</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Réaliser le déploiement d'EasyAIoT dans l'environnement réseau et matériel spécifié par le client.</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">1000 RMB</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Support de déploiement en ligne</td>
-</tr>
-<tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">Support technique</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Fournir des réponses aux questions concernant les problèmes rencontrés lors du déploiement et de l'utilisation des fonctionnalités.</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">500 RMB</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Support à distance en ligne dans les 30 minutes</td>
-</tr>
-<tr>
-<td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50;">Autres services</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">Développement sur mesure de solutions pour des domaines verticaux ; services de fonctionnalités et de durée sur mesure, etc.</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; text-align: center; color: #e74c3c; font-weight: 600;">À discuter</td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444;">À discuter</td>
-</tr>
-</tbody>
-</table>
+#### 📺 Visualisation SCADA
+
+| | | |
+|:---:|:---:|:---:|
+| ![Projet](.image/banner/banner1185.png) | ![SCADA](.image/banner/banner1186.png) | ![Édition](.image/banner/banner1187.png) |
+| ![Aperçu](.image/banner/banner1188.png) | ![Composants](.image/banner/banner1189.png) | ![Source de données](.image/banner/banner1190.png) |
+| ![Publication](.image/banner/banner1191.png) | ![Exécution](.image/banner/banner1192.png) | ![Modèle](.image/banner/banner1193.png) |
+| ![Ressources](.image/banner/banner1194.png) | ![Grand écran](.image/banner/banner1195.png) | ![Présentation](.image/banner/banner1196.png) |
+
+#### 🤖 Vision IA
+
+| | | |
+|:---:|:---:|:---:|
+| ![Pose](.image/banner/banner1147.jpg) | ![Reconnaissance](.image/banner/banner1148.jpg) | ![Tâche](.image/banner/banner1085.jpg) |
+| ![Configuration](.image/banner/banner1086.jpg) | ![Détails](.image/banner/banner1087.jpg) | ![Exécution](.image/banner/banner1088.jpg) |
+| ![Zone](.image/banner/banner1079.jpg) | ![Boîte de détection](.image/banner/banner1080.jpg) | ![Surveillance armée](.image/banner/banner1081.jpg) |
+| ![Aperçu](.image/banner/banner1082.jpg) | ![Algorithme](.image/banner/banner1062.jpg) | ![Création](.image/banner/banner1063.png) |
+| ![Image](.image/banner/banner1064.jpg) | ![Analyse](.image/banner/banner1065.jpg) | ![Résultat](.image/banner/banner1066.jpg) |
+| ![Relecture](.image/banner/banner1067.jpg) | ![Direct](.image/banner/banner1052.jpg) | ![Intelligent](.image/banner/banner1054.jpg) |
+
+#### 🧠 Modèles IA
+
+| | | |
+|:---:|:---:|:---:|
+| ![Qwen](.image/banner/banner1093.jpg) | ![Modèle visuel](.image/banner/banner1094.jpg) | ![Liste](.image/banner/banner1099.png) |
+| ![Configuration](.image/banner/banner1100.png) | ![Détails](.image/banner/banner1101.png) | ![Appel](.image/banner/banner1102.png) |
+| ![Entraînement](.image/banner/banner1019.jpg) | ![Tâche](.image/banner/banner1020.jpg) | ![Liste](.image/banner/banner1023.jpg) |
+| ![Progression](.image/banner/banner1024.jpg) | ![Paramètres](.image/banner/banner1017.jpg) | ![Évaluation](.image/banner/banner1018.jpg) |
+| ![Détails](.image/banner/banner1021.jpg) | ![Journal](.image/banner/banner1022.jpg) | ![Gestion](.image/banner/banner1097.png) |
+| ![Dépôt](.image/banner/banner1098.png) | ![Version](.image/banner/banner1039.jpg) | ![Ressources](.image/banner/banner1061.jpg) |
+| ![Inférence](.image/banner/banner1040.jpg) | ![Configuration](.image/banner/banner1042.jpg) | ![Résultat](.image/banner/banner1043.jpg) |
+| ![En ligne](.image/banner/banner1044.jpg) | ![Lot](.image/banner/banner1047.jpg) | ![Surveillance](.image/banner/banner1048.jpg) |
+| ![Service](.image/banner/banner1045.jpg) | ![Déploiement](.image/banner/banner1046.jpg) | ![Cluster](.image/banner/banner1049.jpg) |
+| ![Appel](.image/banner/banner1050.jpg) | ![Poids](.image/banner/banner1111.png) | ![Téléchargement](.image/banner/banner1112.png) |
+
+#### 📦 Jeux de données
+
+| | | |
+|:---:|:---:|:---:|
+| ![Gestion](.image/banner/banner1015.png) | ![Liste](.image/banner/banner1010.jpg) | ![Annotation](.image/banner/banner1027.png) |
+| ![Tâche](.image/banner/banner1016.jpg) | ![Outil](.image/banner/banner1059.jpg) | ![Aperçu](.image/banner/banner1060.jpg) |
+| ![Détails](.image/banner/banner1107.png) | ![Import](.image/banner/banner1108.png) | ![Projet](.image/banner/banner1109.png) |
+| ![Revue](.image/banner/banner1110.png) | ![Création](.image/banner/banner1007.jpg) | ![Échantillon](.image/banner/banner1008.jpg) |
+
+#### 📹 Vidéosurveillance
+
+| | | |
+|:---:|:---:|:---:|
+| ![Direct live](.image/banner/banner1145.jpg) | ![Aperçu](.image/banner/banner1146.jpg) | ![Caméra](.image/banner/banner1051.jpg) |
+| ![Liste](.image/banner/banner1053.jpg) | ![Push flux](.image/banner/banner1083.jpg) | ![Relais](.image/banner/banner1084.jpg) |
+| ![Stockage](.image/banner/banner1121.png) | ![Capture](.image/banner/banner1122.png) | ![Enregistrement](.image/banner/banner1123.png) |
+| ![Configuration](.image/banner/banner1124.png) | ![Capacité](.image/banner/banner1125.png) | ![Relecture](.image/banner/banner1126.png) |
+| ![Capture](.image/banner/banner1117.png) | ![Fichier](.image/banner/banner1118.png) | ![Stratégie](.image/banner/banner1119.png) |
+| ![Quota](.image/banner/banner1120.png) | ![Galerie](.image/banner/banner1057.jpg) | ![Archivage](.image/banner/banner1058.jpg) |
+| ![Surveillance](.image/banner/banner1068.jpg) | ![Statistiques](.image/banner/banner1069.jpg) | ![Carte](.image/banner/banner1113.png) |
+| ![Localisation](.image/banner/banner1114.png) | ![Distribution](.image/banner/banner1115.png) | ![Point](.image/banner/banner1116.png) |
+| ![Direct](.image/banner/banner1026.jpg) | ![Multi-voies](.image/banner/banner1028.jpg) | ![Push flux](.image/banner/banner1103.png) |
+| ![Aperçu](.image/banner/banner1104.png) | ![Accès](.image/banner/banner1105.png) | ![NVR](.image/banner/banner1106.png) |
+| ![Direct](.image/banner/banner1183.jpg) | ![Carte](.image/banner/banner1184.jpg) |  |
+
+#### 🔌 IoT
+
+| | | |
+|:---:|:---:|:---:|
+| ![Modèle d'objet](.image/banner/banner1149.jpg) | ![Définition](.image/banner/banner1150.jpg) | ![Produit](.image/banner/banner1151.jpg) |
+| ![Détails](.image/banner/banner1152.jpg) | ![Appareil](.image/banner/banner1153.jpg) | ![Détails](.image/banner/banner1154.jpg) |
+| ![État](.image/banner/banner1155.jpg) | ![Propriété](.image/banner/banner1156.jpg) | ![Service](.image/banner/banner1157.jpg) |
+| ![Événement](.image/banner/banner1158.jpg) | ![Ombre](.image/banner/banner1159.jpg) | ![Topologie](.image/banner/banner1160.jpg) |
+| ![Sous-appareil](.image/banner/banner1161.jpg) | ![Groupe](.image/banner/banner1162.jpg) | ![Contrôle](.image/banner/banner1163.jpg) |
+| ![Télémétrie](.image/banner/banner1164.jpg) | ![Historique](.image/banner/banner1165.jpg) | ![Protocole](.image/banner/banner1166.jpg) |
+| ![Connexion](.image/banner/banner1167.jpg) | ![Authentification](.image/banner/banner1168.jpg) | ![Débogage](.image/banner/banner1169.jpg) |
+| ![Fonction](.image/banner/banner1170.jpg) | ![Lecture/écriture](.image/banner/banner1171.jpg) | ![Service](.image/banner/banner1172.jpg) |
+| ![Abonnement](.image/banner/banner1173.jpg) | ![Journal](.image/banner/banner1174.jpg) | ![En ligne](.image/banner/banner1175.jpg) |
+| ![Statistiques](.image/banner/banner1176.jpg) | ![Vue d'ensemble](.image/banner/banner1177.jpg) | ![Tableau de bord](.image/banner/banner1178.jpg) |
+| ![Produit](.image/banner/banner1006.jpg) | ![Appareil](.image/banner/banner1009.jpg) |  |
+
+#### 🚀 OTA / Règles
+
+| | | |
+|:---:|:---:|:---:|
+| ![OTA](.image/banner/banner1179.jpg) | ![Firmware](.image/banner/banner1180.jpg) | ![Tâche](.image/banner/banner1181.jpg) |
+| ![Progression](.image/banner/banner1182.jpg) | ![Règle](.image/banner/banner1013.jpg) | ![Orchestration](.image/banner/banner1014.png) |
+
+#### 🖥️ Cluster
+
+| | | |
+|:---:|:---:|:---:|
+| ![Aperçu](.image/banner/banner1127.jpg) | ![Puissance de calcul](.image/banner/banner1128.jpg) | ![Nœud](.image/banner/banner1129.jpg) |
+| ![Détails](.image/banner/banner1130.jpg) | ![Surveillance](.image/banner/banner1131.jpg) | ![Ordonnancement](.image/banner/banner1132.jpg) |
+| ![Liste](.image/banner/banner1133.jpg) | ![État](.image/banner/banner1134.jpg) | ![Configuration](.image/banner/banner1135.jpg) |
+| ![Allocation](.image/banner/banner1136.jpg) |  |  |
+
+#### 🔔 Alertes
+
+| | | |
+|:---:|:---:|:---:|
+| ![Événement](.image/banner/banner1089.jpg) | ![Traitement](.image/banner/banner1090.jpg) | ![Notification](.image/banner/banner1029.jpg) |
+| ![Configuration](.image/banner/banner1030.jpg) | ![Liste](.image/banner/banner1072.jpg) | ![Détails](.image/banner/banner1031.jpg) |
+| ![Traitement](.image/banner/banner1070.jpg) | ![Statistiques](.image/banner/banner1071.jpg) |  |
+
+#### ⚙️ Système
+
+| | | |
+|:---:|:---:|:---:|
+| ![Identité](.image/banner/banner1143.jpg) | ![Réinitialisation](.image/banner/banner1144.jpg) | ![Utilisateur](.image/banner/banner1003.png) |
+| ![Permissions](.image/banner/banner1004.png) | ![Menu](.image/banner/banner1005.png) | ![Configuration](.image/banner/banner1002.png) |
+
+#### 📱 APP
+
+| | | |
+|:---:|:---:|:---:|
+| ![Accueil](.image/banner/app/app_1000.jpg) | ![Surveillance](.image/banner/app/app_1001.jpg) | ![Aperçu](.image/banner/app/app_1002.jpg) |
+| ![Alerte](.image/banner/app/app_1003.jpg) | ![Relecture](.image/banner/app/app_1004.jpg) | ![Appareil](.image/banner/app/app_1005.jpg) |
+| ![Messages](.image/banner/app/app_1006.jpg) | ![Profil](.image/banner/app/app_1007.jpg) |  |
+
 
 ## 📞 Contact
 
@@ -1072,14 +834,13 @@ Voici les contributeurs exceptionnels qui ont apporté une contribution signific
 </tr>
 <tr style="background-color: #f8f9fa;">
 <td style="padding: 15px; border: 1px solid #e0e0e0; font-weight: 600; color: #2c3e50; width: 32%; min-width: 9rem;"><nobr>狗娃</nobr></td>
-<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Pour faire progresser EasyAIoT dans la perception d'état des équipements, la gouvernance des seuils et la visualisation d'exploitation des équipements centraux, a mis en place la boucle fermée « prédire — borner — alerter — régler — maîtriser sur un écran » : a contribué à la prédiction de données flottantes des capteurs, à la configuration des seuils haut/bas des attributs d'état d'exécution, aux alertes et règles de seuil avec liaison, ainsi qu'à l'affichage sur un écran de l'état d'exécution des sous-appareils liés à l'équipement central — pour que le côté équipements puisse « voir les chiffres, gouverner les bornes, lever les alertes et saisir le global ».</td>
+<td style="padding: 15px; border: 1px solid #e0e0e0; color: #444; line-height: 1.8;">Pour faire progresser EasyAIoT vers « des données IoT affichables en écran », a proposé en amont l'idée produit d'un module Board (tableau glisser-déposer) basé sur GoView open source : les grands écrans traditionnels exigent souvent du SQL écrit à la main pour chaque écran et composant — livraison lente, modification coûteuse, quasi impossible pour le métier en autonomie. Le schéma Board confie graphiques, indicateurs et mise en page à un canevas glisser-déposer, avec variables de composants raccordées directement aux points IoT — valeurs temps réel et historiques depuis les appareils sans requête dédiée par tableau. Situation de campus, KPI de ligne, exploitation d'équipements, etc. passent de « l'écran nécessite du SQL développeur » à « choisir un point, glisser un composant, écran prêt » — cycle de livraison visualisation raccourci, « des chiffres en coulisse » devient « un écran en façade » opérable. Auparavant, a aussi contribué à la prédiction de données flottantes des capteurs, aux seuils haut/bas des attributs d'état, aux alertes et règles de seuil, et à l'affichage sur un écran de l'état des sous-appareils liés à l'équipement central — boucle « prédire — borner — alerter — régler — maîtriser sur un écran », pour que le côté équipements puisse « voir les chiffres, gouverner les bornes, lever les alertes et saisir le global ».</td>
 </tr>
 </tbody>
 </table>
 
 <p style="font-size: 14px; line-height: 1.8; color: #2c3e50; font-weight: 500; margin: 20px 0; padding: 15px; background-color: #e8f4f8; border-left: 4px solid #3498db; border-radius: 4px;">
-<strong>Remerciements spéciaux</strong> : Le travail des contributeurs ci-dessus a fait avancer EasyAIoT sur plusieurs fronts, notamment la documentation et les scripts de déploiement multiplateforme, la mise en œuvre des capacités vidéo selon la norme nationale (dont GB28181), les tests d'intégration IA, l'utilisabilité de l'entraînement multi-GPU et de la reprise sur point de contrôle, la découverte directe multi-marques et l'intégration en masse des caméras, la mise en production de la visualisation spatiale Tianditu, l'architecture de déploiement et d'ordonnancement des clusters multimédia hétérogènes, la mise en production de l'algorithme de reconnaissance de plaques et de son implémentation complète, l'intégration de bout en bout EasyAIoT-Edge reliant l'accès caméra et l'IA sur l'edge, l'organisation de la communauté de développeurs sur le campus et la construction d'un écosystème collaboratif pour la jeunesse, la boucle fermée montante/descendante des équipements IoT et l'intégration de la vision aérienne DJI FlightHub, l'accès aux protocoles industriels Modbus-TCP / Modbus-RTU / OPC UA, ainsi que la boucle fermée de connexion directe des caméras de la découverte à la connexion/synchronisation/configuration/flux multi-marques, la prédiction de données flottantes des capteurs avec les règles d'alerte de seuil, et l'affichage en un écran de l'état de fonctionnement des sous-équipements associés aux équipements centraux. Leur professionnalisme et leur dévouement méritent notre reconnaissance et notre respect. Encore une fois, nous exprimons notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏
-</p>
+<strong>Remerciements spéciaux</strong> : Les contributeurs ci-dessus ont fait avancer EasyAIoT sur la documentation et les scripts de déploiement multiplateforme, la mise en œuvre vidéo norme nationale et les tests d'intégration IA, l'utilisabilité de l'entraînement multi-GPU et la reprise sur point de contrôle, la découverte directe multi-marques et l'intégration en masse des caméras, la visualisation spatiale Tianditu complète, l'architecture de cluster multimédia hétérogène SRS/ZLMediaKit, la reconnaissance de plaques et son implémentation complète, l'intégration EasyAIoT-Edge de bout en bout, l'organisation de la communauté de jeunes développeurs, la boucle fermée IoT montante/descendante et l'accès vue aérienne DJI FlightHub, Modbus-TCP / Modbus-RTU / OPC UA, la connexion directe caméra de la découverte à la connexion/synchronisation/configuration/flux multi-marques, la conception Board GoView avec intégration directe des points IoT temps réel/historique, la prédiction flottante des capteurs avec alertes de seuil et l'affichage sur un écran des sous-appareils — leur professionnalisme et leur dévouement méritent respect et reconnaissance. Encore une fois, notre gratitude la plus sincère à ces contributeurs exceptionnels ! 🙏</p>
 
 ## 💝 Gardiens de l'open source
 
@@ -1453,13 +1214,9 @@ Vos suggestions pour améliorer EasyAIoT sont les bienvenues.
 ## 📄 Licence
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-翱翔的雄库鲁/easyaiot utilise la licence open source <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la popularisation et le développement de la technologie IA, permettant à plus de personnes d'utiliser librement et de bénéficier de cette technologie.
+翱翔的雄库鲁/easyaiot est publié sous la licence open source <a href="https://gitee.com/soaring-xiongkulu/easyaiot/blob/main/LICENSE" style="color: #3498db; text-decoration: none; font-weight: 600;">MIT LICENSE</a>. Nous nous engageons à promouvoir la diffusion et le développement de la technologie IA, afin que davantage de personnes puissent utiliser librement et bénéficier de cette technologie.
 </p>
 
 <p style="font-size: 15px; line-height: 1.8; color: #333; margin: 15px 0;">
-<strong>Licence d'utilisation</strong> : Les particuliers et les entreprises peuvent l'utiliser gratuitement à 100%, sans avoir besoin de conserver les informations sur l'auteur ou le droit d'auteur. Nous croyons que la valeur de la technologie réside dans son utilisation généralisée et son innovation continue, et non dans les contraintes du droit d'auteur. Nous espérons que vous pourrez librement utiliser, modifier et distribuer ce projet, rendant la technologie IA vraiment bénéfique pour tous.
+<strong>Licence d'utilisation</strong> : Particuliers et entreprises peuvent l'utiliser gratuitement à 100 %, sans obligation de conserver les informations sur l'auteur ou le copyright. Nous croyons que la valeur de la technologie réside dans son usage large et son innovation continue, et non dans les contraintes du droit d'auteur. Nous espérons que vous pourrez librement utiliser, modifier et distribuer ce projet, pour que la technologie IA profite réellement à chacun.
 </p>
-
-## 🌟 Tendance de croissance des Stars
-
-[![Stargazers over time](https://starchart.cc/soaring-xiongkulu/easyaiot.svg?variant=adaptive)](https://starchart.cc/soaring-xiongkulu/easyaiot)
